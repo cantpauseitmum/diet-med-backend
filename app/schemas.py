@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 class DolegliwoscOut(BaseModel):
     id: int
@@ -14,17 +14,16 @@ class DolegliwosciPackageOut(BaseModel):
     generated_at: str
 
 class ZgloszenieCreate(BaseModel):
-    email: EmailStr
-    dolegliwosci: List[int] # ID dolegliwości zaznaczonych jako "tak"
+    dolegliwosci: List[int] # Numery ID dolegliwości zaznaczonych jako "tak"
+    email: Optional[str] = None
 
 class ZgloszenieResponse(BaseModel):
     status: str
     message: str
-    email: str
     dolegliwosci_wybrane: List[str]
     pdf_filename: str
-    pdf_download_url: Optional[str] = None
-    email_wyslany: bool
+    pdf_download_url: str
+    email: Optional[str] = None
 
 class SiboProduktOut(BaseModel):
     id: int

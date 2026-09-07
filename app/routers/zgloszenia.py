@@ -10,16 +10,15 @@ from app.config import settings
 from app.models import Dolegliwosc, SiboProdukt, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
-from app.email_sender import send_email_with_pdf
 
 router = APIRouter(prefix="/api/zgloszenia", tags=["Zgłoszenia i PDF"])
 
 @router.post("", response_model=ZgloszenieResponse)
 def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     """
-    Odbiera JSON z adresem e-mail oraz numerami ID dolegliwości zaznaczonych jako 'Tak'.
+    Odbiera JSON z numerami ID dolegliwości zaznaczonych jako 'Tak' (oraz opcjonalnym mailem).
     Pobiera ograniczenia z bazy, rozstrzyga konflikty, generuje plik PDF 'ograniczenia zywieniowe.pdf'
-    i wysyła go na podany adres e-mail.
+    i zwraca bezpośredni URL do pobrania dokumentu.
     """
     # 1. Weryfikacja wybranych dolegliwości
     ailment_records = db.query(Dolegliwosc).filter(Dolegliwosc.id.in_(data.dolegliwosci)).all()
@@ -64,8 +63,8 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
             except Exception:
                 pass
 
-    # Jeśli nie ma jeszcze tabeli dla wybranej dolegliwości i lista produktów jest pusta,
-    # w celach demonstracyjnych raport zawiera produkty SIBO jako bazę
+    # Jeśli nie ma jeszcze dedykowanej tabeli dla innej wybranej dolegliwości,
+    # w celach demonstracyjnych raport zawiera bazę produktów SIBO
     if not raw_products and ailment_records:
         sibo_items = db.query(SiboProdukt).all()
         for p in sibo_items:
@@ -94,40 +93,31 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         output_filepath=pdf_full_path
     )
 
-    # 5. Wysłanie wiadomości e-mail z załącznikiem PDF
-    email_sent = send_email_with_pdf(
-        to_email=data.email,
-        pdf_path=pdf_full_path,
-        filename="ograniczenia zywieniowe.pdf"
-    )
-
-    # 6. Rejestracja w bazie danych (tabela zgloszenia)
+    # 5. Rejestracja w bazie danych (tabela zgloszenia)
     new_sub = Zgloszenie(
         email=data.email,
         dolegliwosci_ids=data.dolegliwosci,
         pdf_path=pdf_filename,
-        status_wysylki="wyslano" if email_sent else "zapisano_lokalnie"
+        status="wygenerowano"
     )
     db.add(new_sub)
     db.commit()
 
     return ZgloszenieResponse(
         status="success",
-        message="Formularz został pomyślnie przetworzony. Zestawienie PDF zostało wygenerowane.",
+        message="Plik PDF z ograniczeniami żywieniowymi został pomyślnie przygotowany.",
         email=data.email,
         dolegliwosci_wybrane=selected_names,
         pdf_filename=pdf_filename,
-        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{pdf_filename}",
-        email_wyslany=email_sent
+        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{pdf_filename}"
     )
 
 
 @router.get("/pobierz-pdf/{filename}")
 def download_pdf(filename: str):
     """
-    Udostępnia do bezpośredniego pobrania wygenerowany plik PDF.
+    Udostępnia wygenerowany plik PDF do bezpośredniego pobrania.
     """
-    # Zabezpieczenie przed path traversal
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(settings.PDF_OUTPUT_DIR, safe_filename)
 

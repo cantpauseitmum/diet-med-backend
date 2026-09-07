@@ -22,8 +22,8 @@ class Zgloszenie(Base):
     __tablename__ = "zgloszenia"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)
     dolegliwosci_ids = Column(ARRAY(Integer), nullable=False)
     pdf_path = Column(String(255), nullable=True)
-    status_wysylki = Column(String(50), default="wyslano")
+    status = Column(String(50), default="wygenerowano")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

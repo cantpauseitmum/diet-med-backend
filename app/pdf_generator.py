@@ -85,7 +85,7 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
 
 
 def generate_restrictions_pdf(
-    email: str,
+    email: str | None,
     selected_ailments: list[str],
     merged_products: dict,
     output_filepath: str
@@ -179,12 +179,13 @@ def generate_restrictions_pdf(
     story = []
 
     # Nagłówek dokumentu
-    story.append(Paragraph("Diet-Med • Test Doboru Produktów dla Zdrowia", subtitle_style))
+    pacjent_info = f"<b>Pacjent:</b> {email} &nbsp;|&nbsp; " if email else ""
+    story.append(Paragraph("Diet-Med • Test Doboru Produktów dla Zdrowia (TDP)", subtitle_style))
     story.append(Paragraph("Ograniczenia Żywieniowe", title_style))
     story.append(Paragraph(
-        f"<b>Raport indywidualny dla:</b> {email} &nbsp;|&nbsp; "
-        f"<b>Data:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}<br/>"
-        f"<b>Wskazane dolegliwości:</b> {', '.join(selected_ailments) if selected_ailments else 'Brak'}",
+        f"{pacjent_info}"
+        f"<b>Data generowania:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}<br/>"
+        f"<b>Wskazane dolegliwości:</b> {', '.join(selected_ailments) if selected_ailments else 'Ogólne wytyczne'}",
         subtitle_style
     ))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=14))

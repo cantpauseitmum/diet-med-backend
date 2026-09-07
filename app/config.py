@@ -14,14 +14,6 @@ class Settings(BaseSettings):
     # Katalog na generowane pliki PDF
     PDF_OUTPUT_DIR: str = os.getenv("PDF_OUTPUT_DIR", "./generated_pdfs")
     
-    # Konfiguracja serwera pocztowego SMTP
-    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
-    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USER: str = os.getenv("SMTP_USER", "")
-    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
-    SMTP_FROM: str = os.getenv("SMTP_FROM", "kontakt@diet-med.pl")
-    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "True").lower() in ("true", "1", "yes")
-    
     # CORS
     CORS_ORIGINS: list[str] = ["*"]
 
