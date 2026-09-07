@@ -4,6 +4,8 @@ from pydantic import BaseModel
 class DolegliwoscOut(BaseModel):
     id: int
     kod: str
+    dostepna: bool = True
+    tabela: Optional[str] = None
 
     class Config:
         from_attributes = True

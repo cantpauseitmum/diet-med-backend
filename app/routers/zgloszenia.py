@@ -10,6 +10,7 @@ from app.config import settings
 from app.models import Dolegliwosc, SiboProdukt, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
+from app.routers.dolegliwosci import find_ailment_table
 
 router = APIRouter(prefix="/api/zgloszenia", tags=["Zgłoszenia i PDF"])
 
@@ -24,12 +25,18 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     ailment_records = db.query(Dolegliwosc).filter(Dolegliwosc.id.in_(data.dolegliwosci)).all()
     selected_names = [a.kod for a in ailment_records]
     
-    # 2. Pobranie produktów dla wybranych dolegliwości
+    # 2. Pobranie produktów dla wybranych dolegliwości z ich dedykowanych tabel
     raw_products: List[dict] = []
     
+    existing_tables = set(
+        row[0].lower() for row in db.execute(
+            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        ).fetchall()
+    )
+    
     for ailment in ailment_records:
-        kod_lower = ailment.kod.lower()
-        if "sibo" in kod_lower:
+        table_name = find_ailment_table(ailment.kod, existing_tables)
+        if table_name == "sibo_produkty":
             sibo_items = db.query(SiboProdukt).all()
             for p in sibo_items:
                 raw_products.append({
@@ -40,26 +47,19 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                     "komentarz": p.komentarz,
                     "dolegliwosc": ailment.kod
                 })
-        else:
-            # Sprawdzenie czy w bazie istnieje dedykowana tabela dla innej dolegliwości
-            table_name = f"{kod_lower.replace('/', '_').replace(' ', '_')}_produkty"
+        elif table_name:
             try:
-                sql_check = text(
-                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :t)"
-                )
-                exists = db.execute(sql_check, {"t": table_name}).scalar()
-                if exists:
-                    sql_fetch = text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {table_name}")
-                    rows = db.execute(sql_fetch).fetchall()
-                    for r in rows:
-                        raw_products.append({
-                            "rodzaj": r[0],
-                            "status": r[1],
-                            "ilosc": r[2],
-                            "jednostka": r[3],
-                            "komentarz": r[4],
-                            "dolegliwosc": ailment.kod
-                        })
+                sql_fetch = text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {table_name}")
+                rows = db.execute(sql_fetch).fetchall()
+                for r in rows:
+                    raw_products.append({
+                        "rodzaj": r[0],
+                        "status": r[1],
+                        "ilosc": r[2],
+                        "jednostka": r[3],
+                        "komentarz": r[4],
+                        "dolegliwosc": ailment.kod
+                    })
             except Exception:
                 pass
 
