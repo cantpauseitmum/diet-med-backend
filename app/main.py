@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.config import settings
 from app.database import engine, Base
-from app.routers import dolegliwosci, zgloszenia, sibo
+from app.routers import dolegliwosci, zgloszenia, sibo, hashimoto
 
 # Konfiguracja logowania
 logging.basicConfig(
@@ -17,7 +17,7 @@ logger = logging.getLogger("diet_med")
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="API dla systemu Diet-Med: lista dolegliwości TDP, produkty SIBO, generowanie PDF i obsługa zgłoszeń pacjentów."
+    description="API dla systemu Diet-Med: lista dolegliwości TDP, produkty SIBO, produkty Hashimoto, generowanie PDF i obsługa zgłoszeń pacjentów."
 )
 
 # Konfiguracja CORS (umożliwia komunikację z frontendem)
@@ -33,6 +33,7 @@ app.add_middleware(
 app.include_router(dolegliwosci.router)
 app.include_router(zgloszenia.router)
 app.include_router(sibo.router)
+app.include_router(hashimoto.router)
 
 @app.get("/health", tags=["System"])
 def health_check():
