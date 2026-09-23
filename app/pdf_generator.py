@@ -6,6 +6,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, HRFlowable
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 
 # Rejestracja czcionek z polskimi znakami
 FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
@@ -224,6 +225,52 @@ def compute_zakazane_layout(items: list[dict], usable_width: float = USABLE_WIDT
 
     col_w = usable_width / float(cols_count)
     return cols_count, [col_w] * cols_count
+
+
+class NumberedCanvas(canvas.Canvas):
+    """
+    Dwuprzebiegowy canvas ReportLab do dynamicznego nanoszenia numeracji stron ('Strona X z Y')
+    oraz powtarzalnych nagłówków i stopek na każdej stronie raportu.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_decorations(num_pages)
+            super().showPage()
+        super().save()
+
+    def draw_page_decorations(self, page_count):
+        self.saveState()
+        self.setFont(FONT_NORMAL, 8)
+        self.setFillColor(colors.HexColor("#64748b"))
+
+        # 1. Bieżący dyskretny nagłówek na kolejnych stronach (strona 2+)
+        if self._pageNumber > 1:
+            self.drawString(MARGIN_LEFT, PAGE_HEIGHT - 24, "Diet-Med • TDP — Spersonalizowany Raport Ograniczeń Żywieniowych")
+            self.setStrokeColor(colors.HexColor("#cbd5e1"))
+            self.setLineWidth(0.5)
+            self.line(MARGIN_LEFT, PAGE_HEIGHT - 28, PAGE_WIDTH - MARGIN_RIGHT, PAGE_HEIGHT - 28)
+
+        # 2. Bieżąca stopka na każdej stronie
+        page_str = f"Strona {self._pageNumber} z {page_count}"
+        self.drawRightString(PAGE_WIDTH - MARGIN_RIGHT, 16, page_str)
+        self.drawString(MARGIN_LEFT, 16, "Diet-Med (TDP) • Zalecenia pomocnicze. W razie wątpliwości skonsultuj się ze specjalistą.")
+
+        # Linia nad stopką
+        self.setStrokeColor(colors.HexColor("#e2e8f0"))
+        self.setLineWidth(0.5)
+        self.line(MARGIN_LEFT, 26, PAGE_WIDTH - MARGIN_RIGHT, 26)
+
+        self.restoreState()
 
 
 def generate_restrictions_pdf(
@@ -516,6 +563,6 @@ def generate_restrictions_pdf(
         footer_style
     ))
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     return output_filepath
 

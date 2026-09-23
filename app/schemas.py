@@ -27,7 +27,7 @@ class ZgloszenieResponse(BaseModel):
     pdf_download_url: str
     email: Optional[str] = None
 
-class SiboProduktOut(BaseModel):
+class ProduktBaseOut(BaseModel):
     id: int
     rodzaj: str
     status: str
@@ -38,24 +38,12 @@ class SiboProduktOut(BaseModel):
     class Config:
         from_attributes = True
 
-class HashimotoProduktOut(BaseModel):
-    id: int
-    rodzaj: str
-    status: str
-    ilosc: Optional[float] = None
-    jednostka: Optional[str] = None
-    komentarz: Optional[str] = None
+class SiboProduktOut(ProduktBaseOut):
+    pass
 
-    class Config:
-        from_attributes = True
+class HashimotoProduktOut(ProduktBaseOut):
+    pass
 
-class InsulinoopornoscProduktOut(BaseModel):
-    id: int
-    rodzaj: str
-    status: str
-    ilosc: Optional[float] = None
-    jednostka: Optional[str] = None
-    komentarz: Optional[str] = None
+class InsulinoopornoscProduktOut(ProduktBaseOut):
+    pass
 
-    class Config:
-        from_attributes = True

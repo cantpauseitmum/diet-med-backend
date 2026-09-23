@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS sibo_produkty (
     jednostka VARCHAR(50) NULL,
     komentarz TEXT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sibo_rodzaj ON sibo_produkty(rodzaj);
-CREATE INDEX IF NOT EXISTS idx_sibo_status ON sibo_produkty(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sibo_produkty_rodzaj ON sibo_produkty(rodzaj);
+CREATE INDEX IF NOT EXISTS idx_sibo_produkty_status ON sibo_produkty(status);
 
 -- 3. Tabela produktów dla Hashimoto
 DROP TABLE IF EXISTS hashimoto_produkty CASCADE;
@@ -31,10 +31,10 @@ CREATE TABLE IF NOT EXISTS hashimoto_produkty (
     jednostka VARCHAR(50) NULL,
     komentarz TEXT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_hashimoto_rodzaj ON hashimoto_produkty(rodzaj);
-CREATE INDEX IF NOT EXISTS idx_hashimoto_status ON hashimoto_produkty(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hashimoto_produkty_rodzaj ON hashimoto_produkty(rodzaj);
+CREATE INDEX IF NOT EXISTS idx_hashimoto_produkty_status ON hashimoto_produkty(status);
 
--- 4. Tabela produktów dla Insulinooporności
+-- 4. Tabela produktów dla Insulinooporność
 DROP TABLE IF EXISTS insulinoopornosc_produkty CASCADE;
 CREATE TABLE IF NOT EXISTS insulinoopornosc_produkty (
     id SERIAL PRIMARY KEY,
@@ -44,10 +44,10 @@ CREATE TABLE IF NOT EXISTS insulinoopornosc_produkty (
     jednostka VARCHAR(50) NULL,
     komentarz TEXT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_insulinoopornosc_rodzaj ON insulinoopornosc_produkty(rodzaj);
-CREATE INDEX IF NOT EXISTS idx_insulinoopornosc_status ON insulinoopornosc_produkty(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_insulinoopornosc_produkty_rodzaj ON insulinoopornosc_produkty(rodzaj);
+CREATE INDEX IF NOT EXISTS idx_insulinoopornosc_produkty_status ON insulinoopornosc_produkty(status);
 
--- 5. Tabela zgłoszeń z formularza pacjentów
+-- Tabela zgłoszeń z formularza pacjentów
 CREATE TABLE IF NOT EXISTS zgloszenia (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) NULL,

@@ -5,10 +5,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from app.database import get_db
 from app.config import settings
-from app.models import Dolegliwosc, SiboProdukt, HashimotoProdukt, InsulinoopornoscProdukt, Zgloszenie
+from app.models import Dolegliwosc, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
 from app.routers.dolegliwosci import find_ailment_table
@@ -31,48 +31,11 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     # 2. Pobranie produktów dla wybranych dolegliwości z ich dedykowanych tabel
     raw_products: List[dict] = []
     
-    existing_tables = set(
-        row[0].lower() for row in db.execute(
-            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-        ).fetchall()
-    )
+    existing_tables = set(t.lower() for t in inspect(db.get_bind()).get_table_names())
     
     for ailment in ailment_records:
         table_name = find_ailment_table(ailment.kod, existing_tables)
-        if table_name == "sibo_produkty":
-            sibo_items = db.query(SiboProdukt).all()
-            for p in sibo_items:
-                raw_products.append({
-                    "rodzaj": p.rodzaj,
-                    "status": p.status,
-                    "ilosc": p.ilosc,
-                    "jednostka": p.jednostka,
-                    "komentarz": p.komentarz,
-                    "dolegliwosc": ailment.kod
-                })
-        elif table_name == "hashimoto_produkty":
-            hash_items = db.query(HashimotoProdukt).all()
-            for p in hash_items:
-                raw_products.append({
-                    "rodzaj": p.rodzaj,
-                    "status": p.status,
-                    "ilosc": p.ilosc,
-                    "jednostka": p.jednostka,
-                    "komentarz": p.komentarz,
-                    "dolegliwosc": ailment.kod
-                })
-        elif table_name == "insulinoopornosc_produkty":
-            io_items = db.query(InsulinoopornoscProdukt).all()
-            for p in io_items:
-                raw_products.append({
-                    "rodzaj": p.rodzaj,
-                    "status": p.status,
-                    "ilosc": p.ilosc,
-                    "jednostka": p.jednostka,
-                    "komentarz": p.komentarz,
-                    "dolegliwosc": ailment.kod
-                })
-        elif table_name:
+        if table_name:
             try:
                 sql_fetch = text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {table_name}")
                 rows = db.execute(sql_fetch).fetchall()
@@ -85,24 +48,27 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                         "komentarz": r[4],
                         "dolegliwosc": ailment.kod
                     })
+                logger.info(f"Pobrano {len(rows)} produktów z tabeli '{table_name}' dla dolegliwości '{ailment.kod}'.")
             except Exception as err:
                 logger.error(f"Błąd podczas pobierania produktów z tabeli '{table_name}' dla dolegliwości '{ailment.kod}': {err}")
         else:
             logger.warning(f"Brak dedykowanej tabeli produktów dla dolegliwości '{ailment.kod}'.")
 
-    # Jeśli nie ma jeszcze dedykowanej tabeli dla innej wybranej dolegliwości,
-    # w celach demonstracyjnych raport zawiera bazę produktów SIBO
+    # Jeśli żadna z zaznaczonych dolegliwości nie miała dedykowanej tabeli,
+    # w celach demonstracyjnych raport zawiera pierwszą dostępną bazę (np. sibo_produkty)
     if not raw_products and ailment_records:
-        sibo_items = db.query(SiboProdukt).all()
-        for p in sibo_items:
-            raw_products.append({
-                "rodzaj": p.rodzaj,
-                "status": p.status,
-                "ilosc": p.ilosc,
-                "jednostka": p.jednostka,
-                "komentarz": p.komentarz,
-                "dolegliwosc": "Ogólne wytyczne"
-            })
+        fallback_table = "sibo_produkty" if "sibo_produkty" in existing_tables else next((t for t in existing_tables if t.endswith("_produkty")), None)
+        if fallback_table:
+            rows = db.execute(text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {fallback_table}")).fetchall()
+            for r in rows:
+                raw_products.append({
+                    "rodzaj": r[0],
+                    "status": r[1],
+                    "ilosc": r[2],
+                    "jednostka": r[3],
+                    "komentarz": r[4],
+                    "dolegliwosc": "Ogólne wytyczne"
+                })
 
     # 3. Rozstrzygnięcie konfliktów zgodnie z logiką:
     # priorytet zakazane > ograniczone > dozwolone, min ilosc, połączenie komentarzy

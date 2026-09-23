@@ -1,11 +1,13 @@
 import os
+import re
+import glob
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.config import settings
 from app.database import engine, Base
-from app.routers import dolegliwosci, zgloszenia, sibo, hashimoto, insulinoopornosc
+from app.routers import dolegliwosci, zgloszenia, sibo, hashimoto, insulinoopornosc, produkty
 
 # Konfiguracja logowania
 logging.basicConfig(
@@ -18,7 +20,7 @@ logger = logging.getLogger("diet_med")
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="API dla systemu Diet-Med: lista dolegliwości TDP, produkty SIBO, produkty Hashimoto, produkty Insulinooporność, generowanie PDF i obsługa zgłoszeń pacjentów."
+    description="API dla systemu Diet-Med: lista dolegliwości TDP, uniwersalna baza produktów, generowanie dynamicznych raportów PDF i obsługa zgłoszeń pacjentów."
 )
 
 # Konfiguracja CORS (umożliwia komunikację z frontendem)
@@ -33,6 +35,7 @@ app.add_middleware(
 # Dołączenie routerów
 app.include_router(dolegliwosci.router)
 app.include_router(zgloszenia.router)
+app.include_router(produkty.router)
 app.include_router(sibo.router)
 app.include_router(hashimoto.router)
 app.include_router(insulinoopornosc.router)
@@ -50,33 +53,60 @@ def health_check():
 
 def sync_product_tables(conn):
     """
-    Weryfikuje i automatycznie inicjalizuje/aktualizuje tabele dolegliwosci,
-    sibo_produkty, hashimoto_produkty i insulinoopornosc_produkty, gwarantując, że nawet na istniejących
-    wolumenach Docker w Portainerze baza danych posiada najnowsze i kompletne zbiory produktów.
+    Dynamicznie weryfikuje i automatycznie inicjalizuje/aktualizuje tabele dolegliwosci oraz dowolne
+    tabele produktów na podstawie plików w katalogu 'seeds/', gwarantując, że nawet na istniejących
+    wolumenach Docker w Portainerze baza danych posiada najnowsze i kompletne zbiory danych.
     """
     seeds_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seeds")
-    
+    if not os.path.exists(seeds_dir):
+        logger.warning(f"Katalog seeds nie istnieje: {seeds_dir}")
+        return
+
     # 1. Zapewnienie pełnej listy dolegliwości TDP
-    dolegliwosci_kody = [
-        "hashimoto", "insulinooporność", "cukrzyca", "nietolerancja histaminy",
-        "nadciśnienie tętnicze", "wysoki poziom cholesterolu", "wysoki poziom trójglicerydów",
-        "lipoedema", "nadwaga/otyłość", "SIBO", "IMO", "niedoczynność tarczycy"
-    ]
-    for kod in dolegliwosci_kody:
-        conn.execute(
-            text("INSERT INTO dolegliwosci (kod) VALUES (:kod) ON CONFLICT (kod) DO NOTHING"),
-            {"kod": kod}
-        )
-
-    # 2. Weryfikacja tabel z produktami (dokładnie unikalne produkty bez duplikatów)
-    tables_to_check = [
-        ("sibo_produkty", "03_seed_sibo.sql", 350),
-        ("hashimoto_produkty", "04_seed_hashimoto.sql", 351),
-        ("insulinoopornosc_produkty", "05_seed_insulinoopornosc.sql", 350)
-    ]
-
-    for table_name, seed_file, expected_count in tables_to_check:
+    tdp_seed_path = os.path.join(seeds_dir, "02_seed_tdp.sql")
+    if os.path.exists(tdp_seed_path):
         try:
+            with open(tdp_seed_path, "r", encoding="utf-8") as f:
+                tdp_sql = f.read()
+            for stmt in tdp_sql.split(";"):
+                clean = stmt.strip()
+                if clean:
+                    conn.execute(text(clean))
+            logger.info("Załadowano bazową listę dolegliwości TDP.")
+        except Exception as err:
+            logger.error(f"Błąd podczas ładowania 02_seed_tdp.sql: {err}")
+    else:
+        dolegliwosci_kody = [
+            "hashimoto", "insulinooporność", "cukrzyca", "nietolerancja histaminy",
+            "nadciśnienie tętnicze", "wysoki poziom cholesterolu", "wysoki poziom trójglicerydów",
+            "lipoedema", "nadwaga/otyłość", "SIBO", "IMO", "niedoczynność tarczycy"
+        ]
+        for kod in dolegliwosci_kody:
+            conn.execute(
+                text("INSERT INTO dolegliwosci (kod) VALUES (:kod) ON CONFLICT (kod) DO NOTHING"),
+                {"kod": kod}
+            )
+
+    # 2. Dynamiczne wykrywanie i weryfikacja wszystkich plików seedów tabel produktów
+    seed_files = sorted(glob.glob(os.path.join(seeds_dir, "*.sql")))
+    for seed_path in seed_files:
+        fn = os.path.basename(seed_path)
+        if fn in ("01_init_schema.sql", "02_seed_tdp.sql"):
+            continue
+
+        try:
+            with open(seed_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Dynamicznie odczytaj nazwę tabeli z CREATE TABLE
+            m_table = re.search(r"CREATE TABLE IF NOT EXISTS\s+([a-zA-Z0-9_]+)", content, re.IGNORECASE)
+            if not m_table:
+                continue
+            table_name = m_table.group(1)
+
+            # Policz oczekiwaną liczbę wierszy z instrukcji INSERT
+            expected_count = len(re.findall(r"(?m)^\s*\('", content))
+
             check_sql = text(f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
@@ -84,29 +114,33 @@ def sync_product_tables(conn):
                 );
             """)
             exists = conn.execute(check_sql).scalar()
-            
+
             row_count = 0
             if exists:
                 count_sql = text(f"SELECT COUNT(*) FROM {table_name}")
                 row_count = conn.execute(count_sql).scalar() or 0
-                
-            if not exists or row_count != expected_count:
-                seed_path = os.path.join(seeds_dir, seed_file)
-                if os.path.exists(seed_path):
-                    logger.info(f"Inicjalizacja/aktualizacja tabeli '{table_name}' (obecnie: {row_count} wierszy, oczekiwano unikalnych: {expected_count})...")
-                    with open(seed_path, "r", encoding="utf-8") as f:
-                        sql_commands = f.read()
-                    for stmt in sql_commands.split(";"):
-                        clean_stmt = stmt.strip()
-                        if clean_stmt:
-                            conn.execute(text(clean_stmt))
-                    logger.info(f"Pomyślnie załadowano seedy dla '{table_name}'.")
-                else:
-                    logger.warning(f"Plik seed {seed_path} nie został odnaleziony!")
+
+            if not exists or (expected_count > 0 and row_count != expected_count):
+                logger.info(f"Dynamiczna inicjalizacja/aktualizacja tabeli '{table_name}' z {fn} (obecnie: {row_count}, oczekiwano: {expected_count})...")
+                for stmt in content.split(";"):
+                    clean_stmt = stmt.strip()
+                    if clean_stmt:
+                        conn.execute(text(clean_stmt))
+                logger.info(f"Pomyślnie załadowano seedy dla '{table_name}' ({expected_count} wierszy).")
             else:
-                logger.info(f"Tabela '{table_name}' jest aktualna ({row_count} unikalnych wierszy, 0 duplikatów).")
+                logger.info(f"Tabela '{table_name}' jest aktualna ({row_count} wierszy, plik: {fn}).")
+
+            # Upewnij się, że dolegliwość powiązana z tą tabelą istnieje w tabeli dolegliwosci
+            ailment_derived = table_name.replace("_produkty", "").replace("produkty_", "")
+            if ailment_derived:
+                conn.execute(
+                    text("INSERT INTO dolegliwosci (kod) VALUES (:kod) ON CONFLICT (kod) DO NOTHING"),
+                    {"kod": ailment_derived}
+                )
+
         except Exception as err:
-            logger.error(f"Błąd podczas weryfikacji tabeli '{table_name}': {err}")
+            logger.error(f"Błąd podczas weryfikacji seeda {fn}: {err}")
+
 
 @app.on_event("startup")
 def on_startup():

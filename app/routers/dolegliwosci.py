@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, Set
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from app.database import get_db
 from app.models import Dolegliwosc
 from app.schemas import DolegliwosciPackageOut, DolegliwoscOut
@@ -57,11 +57,7 @@ def get_dolegliwosci_package(response: Response, db: Session = Depends(get_db)):
     items = db.query(Dolegliwosc).order_by(Dolegliwosc.id.asc()).all()
     
     # Pobranie listy tabel z bazy danych
-    existing_tables = set(
-        row[0].lower() for row in db.execute(
-            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-        ).fetchall()
-    )
+    existing_tables = set(t.lower() for t in inspect(db.get_bind()).get_table_names())
     
     dolegliwosci_list = []
     for item in items:
