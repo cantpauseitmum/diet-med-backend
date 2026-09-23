@@ -129,6 +129,13 @@ def sync_product_tables(conn):
                 {"kod": kod}
             )
 
+    # Czyszczenie ewentualnych zdublowanych rekordów (np. 'sibo' vs 'SIBO', 'insulinoopornosc' vs 'insulinooporność')
+    try:
+        conn.execute(text("DELETE FROM dolegliwosci WHERE LOWER(kod) = 'sibo' AND kod != 'SIBO'"))
+        conn.execute(text("DELETE FROM dolegliwosci WHERE kod = 'insulinoopornosc' AND EXISTS (SELECT 1 FROM dolegliwosci WHERE kod = 'insulinooporność')"))
+    except Exception as err:
+        logger.warning(f"Ostrzeżenie przy czyszczeniu duplikatów w dolegliwosci: {err}")
+
     # 2. Dynamiczne wykrywanie i weryfikacja wszystkich plików seedów tabel produktów
     seed_files = sorted(glob.glob(os.path.join(seeds_dir, "*.sql")))
     for seed_path in seed_files:
@@ -172,13 +179,27 @@ def sync_product_tables(conn):
             else:
                 logger.info(f"Tabela '{table_name}' jest aktualna ({row_count} wierszy, plik: {fn}).")
 
-            # Upewnij się, że dolegliwość powiązana z tą tabelą istnieje w tabeli dolegliwosci
+            # Jeśli tabela reprezentuje zupełnie nową dolegliwość, dodaj ją ostrożnie do tabeli dolegliwosci
             ailment_derived = table_name.replace("_produkty", "").replace("produkty_", "")
             if ailment_derived:
-                conn.execute(
-                    text("INSERT INTO dolegliwosci (kod) VALUES (:kod) ON CONFLICT (kod) DO NOTHING"),
-                    {"kod": ailment_derived}
-                )
+                PL_TO_ASCII = str.maketrans({
+                    'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n',
+                    'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
+                    'Ą': 'a', 'Ć': 'c', 'Ę': 'e', 'Ł': 'l', 'Ń': 'n',
+                    'Ó': 'o', 'Ś': 's', 'Ź': 'z', 'Ż': 'z',
+                    '/': '_', ' ': '_', '-': '_'
+                })
+                existing_kody = [r[0] for r in conn.execute(text("SELECT kod FROM dolegliwosci")).fetchall()]
+                existing_norms = {
+                    k.lower().strip().translate(PL_TO_ASCII).replace('/', '_').replace(' ', '_').replace('-', '_')
+                    for k in existing_kody
+                }
+                derived_norm = ailment_derived.lower().strip().translate(PL_TO_ASCII).replace('/', '_').replace(' ', '_').replace('-', '_')
+                if derived_norm not in existing_norms:
+                    conn.execute(
+                        text("INSERT INTO dolegliwosci (kod) VALUES (:kod) ON CONFLICT (kod) DO NOTHING"),
+                        {"kod": ailment_derived}
+                    )
 
         except Exception as err:
             logger.error(f"Błąd podczas weryfikacji seeda {fn}: {err}")

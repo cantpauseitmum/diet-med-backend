@@ -59,8 +59,15 @@ def get_dolegliwosci_package(response: Response, db: Session = Depends(get_db)):
     # Pobranie listy tabel z bazy danych
     existing_tables = set(t.lower() for t in inspect(db.get_bind()).get_table_names())
     
+    seen_normalized = set()
     dolegliwosci_list = []
     for item in items:
+        # Zabezpieczenie przed zdublowanymi wpisami (np. SIBO i sibo, insulinooporność i insulinoopornosc)
+        norm_kod = item.kod.lower().strip().translate(PL_TO_ASCII).replace('/', '_').replace(' ', '_').replace('-', '_')
+        if norm_kod in seen_normalized:
+            continue
+        seen_normalized.add(norm_kod)
+
         table_name = find_ailment_table(item.kod, existing_tables)
         dolegliwosci_list.append(DolegliwoscOut(
             id=item.id,
