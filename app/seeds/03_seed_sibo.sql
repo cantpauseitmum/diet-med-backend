@@ -1,5 +1,5 @@
 -- =========================================================
--- Wypełnienie tabeli produktów SIBO (349 unikalnych wierszy)
+-- Wypełnienie tabeli produktów SIBO (350 unikalnych wierszy)
 -- =========================================================
 DROP TABLE IF EXISTS sibo_produkty CASCADE;
 CREATE TABLE IF NOT EXISTS sibo_produkty (
@@ -25,7 +25,7 @@ INSERT INTO sibo_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
 ('pieczywo naturalnie bezglutenowe na zakwasie', 'dozwolone', NULL, NULL, NULL),
 ('pieczywo naturalnie bezglutenowe na drożdżach', 'dozwolone', NULL, NULL, NULL),
 ('pieczywo mieszane z dodatkami (orzechy, nasiona)', 'zakazane', NULL, NULL, NULL),
-('domowy chleb wg przepisu-SIBO', 'dozwolone', NULL, NULL, NULL),
+('domowy chleb wg przepisu', 'dozwolone', NULL, NULL, NULL),
 ('pszenica', 'zakazane', NULL, NULL, NULL),
 ('orkisz', 'zakazane', NULL, NULL, NULL),
 ('płaskurka', 'zakazane', NULL, NULL, NULL),
@@ -284,7 +284,8 @@ INSERT INTO sibo_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
 ('koper włoski', 'umiarkowane', 45.0, 'g', NULL),
 ('kukurydza z puszki konserwowa', 'umiarkowane', 75.0, 'g', NULL),
 ('kurki', 'zakazane', NULL, NULL, NULL),
-('marchew', 'dozwolone', NULL, NULL, NULL),
+('marchew surowa', 'dozwolone', NULL, NULL, NULL),
+('marchew gotowana', 'dozwolone', NULL, NULL, NULL),
 ('ogórek', 'dozwolone', NULL, NULL, NULL),
 ('ogórek kiszony', 'umiarkowane', 40.0, 'g', NULL),
 ('ogórek konserwowy w occie', 'umiarkowane', 75.0, 'g', NULL),

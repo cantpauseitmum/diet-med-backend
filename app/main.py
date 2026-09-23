@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.config import settings
 from app.database import engine, Base
-from app.routers import dolegliwosci, zgloszenia, sibo, hashimoto
+from app.routers import dolegliwosci, zgloszenia, sibo, hashimoto, insulinoopornosc
 
 # Konfiguracja logowania
 logging.basicConfig(
@@ -18,7 +18,7 @@ logger = logging.getLogger("diet_med")
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="API dla systemu Diet-Med: lista dolegliwości TDP, produkty SIBO, produkty Hashimoto, generowanie PDF i obsługa zgłoszeń pacjentów."
+    description="API dla systemu Diet-Med: lista dolegliwości TDP, produkty SIBO, produkty Hashimoto, produkty Insulinooporność, generowanie PDF i obsługa zgłoszeń pacjentów."
 )
 
 # Konfiguracja CORS (umożliwia komunikację z frontendem)
@@ -35,6 +35,7 @@ app.include_router(dolegliwosci.router)
 app.include_router(zgloszenia.router)
 app.include_router(sibo.router)
 app.include_router(hashimoto.router)
+app.include_router(insulinoopornosc.router)
 
 @app.get("/health", tags=["System"])
 def health_check():
@@ -50,7 +51,7 @@ def health_check():
 def sync_product_tables(conn):
     """
     Weryfikuje i automatycznie inicjalizuje/aktualizuje tabele dolegliwosci,
-    sibo_produkty i hashimoto_produkty, gwarantując, że nawet na istniejących
+    sibo_produkty, hashimoto_produkty i insulinoopornosc_produkty, gwarantując, że nawet na istniejących
     wolumenach Docker w Portainerze baza danych posiada najnowsze i kompletne zbiory produktów.
     """
     seeds_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seeds")
@@ -69,8 +70,9 @@ def sync_product_tables(conn):
 
     # 2. Weryfikacja tabel z produktami (dokładnie unikalne produkty bez duplikatów)
     tables_to_check = [
-        ("sibo_produkty", "03_seed_sibo.sql", 349),
-        ("hashimoto_produkty", "04_seed_hashimoto.sql", 350)
+        ("sibo_produkty", "03_seed_sibo.sql", 350),
+        ("hashimoto_produkty", "04_seed_hashimoto.sql", 351),
+        ("insulinoopornosc_produkty", "05_seed_insulinoopornosc.sql", 350)
     ]
 
     for table_name, seed_file, expected_count in tables_to_check:

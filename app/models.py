@@ -28,6 +28,16 @@ class HashimotoProdukt(Base):
     jednostka = Column(String(50), nullable=True)
     komentarz = Column(Text, nullable=True)
 
+class InsulinoopornoscProdukt(Base):
+    __tablename__ = "insulinoopornosc_produkty"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rodzaj = Column(String(255), unique=True, nullable=False, index=True)
+    status = Column(String(20), nullable=False, index=True) # 'dozwolone', 'umiarkowane', 'zakazane'
+    ilosc = Column(Numeric(10, 2), nullable=True)
+    jednostka = Column(String(50), nullable=True)
+    komentarz = Column(Text, nullable=True)
+
 class Zgloszenie(Base):
     __tablename__ = "zgloszenia"
 

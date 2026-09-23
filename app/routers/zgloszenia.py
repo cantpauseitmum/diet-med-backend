@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.database import get_db
 from app.config import settings
-from app.models import Dolegliwosc, SiboProdukt, HashimotoProdukt, Zgloszenie
+from app.models import Dolegliwosc, SiboProdukt, HashimotoProdukt, InsulinoopornoscProdukt, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
 from app.routers.dolegliwosci import find_ailment_table
@@ -53,6 +53,17 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         elif table_name == "hashimoto_produkty":
             hash_items = db.query(HashimotoProdukt).all()
             for p in hash_items:
+                raw_products.append({
+                    "rodzaj": p.rodzaj,
+                    "status": p.status,
+                    "ilosc": p.ilosc,
+                    "jednostka": p.jednostka,
+                    "komentarz": p.komentarz,
+                    "dolegliwosc": ailment.kod
+                })
+        elif table_name == "insulinoopornosc_produkty":
+            io_items = db.query(InsulinoopornoscProdukt).all()
+            for p in io_items:
                 raw_products.append({
                     "rodzaj": p.rodzaj,
                     "status": p.status,

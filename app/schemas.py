@@ -48,3 +48,14 @@ class HashimotoProduktOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InsulinoopornoscProduktOut(BaseModel):
+    id: int
+    rodzaj: str
+    status: str
+    ilosc: Optional[float] = None
+    jednostka: Optional[str] = None
+    komentarz: Optional[str] = None
+
+    class Config:
+        from_attributes = True

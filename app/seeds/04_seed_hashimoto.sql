@@ -1,5 +1,5 @@
 -- =========================================================
--- Wypełnienie tabeli produktów Hashimoto (350 unikalnych wierszy)
+-- Wypełnienie tabeli produktów Hashimoto (351 unikalnych wierszy)
 -- =========================================================
 DROP TABLE IF EXISTS hashimoto_produkty CASCADE;
 CREATE TABLE IF NOT EXISTS hashimoto_produkty (
@@ -285,7 +285,8 @@ INSERT INTO hashimoto_produkty (rodzaj, status, ilosc, jednostka, komentarz) VAL
 ('koper włoski', 'dozwolone', NULL, NULL, NULL),
 ('kukurydza z puszki konserwowa', 'dozwolone', NULL, NULL, NULL),
 ('kurki', 'dozwolone', NULL, NULL, NULL),
-('marchew', 'dozwolone', NULL, NULL, NULL),
+('marchew surowa', 'dozwolone', NULL, NULL, NULL),
+('marchew gotowana', 'dozwolone', NULL, NULL, NULL),
 ('ogórek', 'dozwolone', NULL, NULL, NULL),
 ('ogórek kiszony', 'dozwolone', NULL, NULL, NULL),
 ('ogórek konserwowy w occie', 'dozwolone', NULL, NULL, NULL),
