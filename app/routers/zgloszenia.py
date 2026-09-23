@@ -11,7 +11,8 @@ from app.config import settings
 from app.models import Dolegliwosc, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
-from app.routers.dolegliwosci import find_ailment_table
+import re
+from app.routers.dolegliwosci import find_ailment_table, PL_TO_ASCII
 
 logger = logging.getLogger("diet_med")
 
@@ -21,19 +22,23 @@ router = APIRouter(prefix="/api/zgloszenia", tags=["Zgłoszenia i PDF"])
 def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     """
     Odbiera JSON z numerami ID dolegliwości zaznaczonych jako 'Tak' (oraz opcjonalnym mailem).
-    Pobiera ograniczenia z bazy, rozstrzyga konflikty, generuje plik PDF 'ograniczenia zywieniowe.pdf'
+    Pobiera ograniczenia z bazy, rozstrzyga konflikty, generuje plik PDF z opisową nazwą
     i zwraca bezpośredni URL do pobrania dokumentu.
     """
-    # 1. Weryfikacja wybranych dolegliwości
-    ailment_records = db.query(Dolegliwosc).filter(Dolegliwosc.id.in_(data.dolegliwosci)).all()
-    selected_names = [a.kod for a in ailment_records]
+    # 1. Weryfikacja wybranych dolegliwości z zachowaniem dokładnej kolejności przekazanej w zapytaniu
+    ailments_by_id = {
+        a.id: a
+        for a in db.query(Dolegliwosc).filter(Dolegliwosc.id.in_(data.dolegliwosci)).all()
+    }
+    selected_records = [ailments_by_id[aid] for aid in data.dolegliwosci if aid in ailments_by_id]
+    selected_names = [a.kod for a in selected_records]
     
     # 2. Pobranie produktów dla wybranych dolegliwości z ich dedykowanych tabel
     raw_products: List[dict] = []
     
     existing_tables = set(t.lower() for t in inspect(db.get_bind()).get_table_names())
     
-    for ailment in ailment_records:
+    for ailment in selected_records:
         table_name = find_ailment_table(ailment.kod, existing_tables)
         if table_name:
             try:
@@ -56,7 +61,7 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
 
     # Jeśli żadna z zaznaczonych dolegliwości nie miała dedykowanej tabeli,
     # w celach demonstracyjnych raport zawiera pierwszą dostępną bazę (np. sibo_produkty)
-    if not raw_products and ailment_records:
+    if not raw_products and selected_records:
         fallback_table = "sibo_produkty" if "sibo_produkty" in existing_tables else next((t for t in existing_tables if t.endswith("_produkty")), None)
         if fallback_table:
             rows = db.execute(text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {fallback_table}")).fetchall()
@@ -74,10 +79,25 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     # priorytet zakazane > ograniczone > dozwolone, min ilosc, połączenie komentarzy
     merged_products = resolve_product_conflicts(raw_products)
 
-    # 4. Generowanie pliku PDF
+    # 4. Generowanie pliku PDF z opisową, czytelną nazwą pliku (np. ograniczenia_zywieniowe_sibo_insulinoopornosc.pdf)
     os.makedirs(settings.PDF_OUTPUT_DIR, exist_ok=True)
-    pdf_filename = f"ograniczenia_zywieniowe_{uuid.uuid4().hex[:8]}.pdf"
-    pdf_full_path = os.path.join(settings.PDF_OUTPUT_DIR, pdf_filename)
+
+    slug_parts = []
+    for name in selected_names:
+        clean = name.lower().strip().translate(PL_TO_ASCII).replace('/', '_').replace(' ', '_').replace('-', '_')
+        clean = re.sub(r'[^a-z0-9_]', '', clean).strip('_')
+        if clean and clean not in slug_parts:
+            slug_parts.append(clean)
+
+    slug_str = "_".join(slug_parts)
+    if slug_str:
+        user_download_name = f"ograniczenia_zywieniowe_{slug_str}.pdf"
+        disk_filename = f"ograniczenia_zywieniowe_{slug_str}_{uuid.uuid4().hex[:6]}.pdf"
+    else:
+        user_download_name = "ograniczenia_zywieniowe.pdf"
+        disk_filename = f"ograniczenia_zywieniowe_{uuid.uuid4().hex[:8]}.pdf"
+
+    pdf_full_path = os.path.join(settings.PDF_OUTPUT_DIR, disk_filename)
 
     generate_restrictions_pdf(
         email=data.email,
@@ -90,7 +110,7 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     new_sub = Zgloszenie(
         email=data.email,
         dolegliwosci_ids=data.dolegliwosci,
-        pdf_path=pdf_filename,
+        pdf_path=disk_filename,
         status="wygenerowano"
     )
     db.add(new_sub)
@@ -101,15 +121,16 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         message="Plik PDF z ograniczeniami żywieniowymi został pomyślnie przygotowany.",
         email=data.email,
         dolegliwosci_wybrane=selected_names,
-        pdf_filename=pdf_filename,
-        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{pdf_filename}"
+        pdf_filename=user_download_name,
+        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{disk_filename}"
     )
 
 
 @router.get("/pobierz-pdf/{filename}")
 def download_pdf(filename: str):
     """
-    Udostępnia wygenerowany plik PDF do bezpośredniego pobrania.
+    Udostępnia wygenerowany plik PDF do bezpośredniego pobrania z czytelną,
+    opisową nazwą pliku odpowiadającą badanym jednostkom chorobowym.
     """
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(settings.PDF_OUTPUT_DIR, safe_filename)
@@ -117,8 +138,13 @@ def download_pdf(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Plik PDF nie został znaleziony.")
 
+    # Czytelna nazwa dla pobieranego pliku (usunięcie surowego identyfikatora UUID)
+    user_friendly_name = re.sub(r'_[0-9a-f]{6,8}\.pdf$', '.pdf', safe_filename)
+    if not user_friendly_name.endswith('.pdf'):
+        user_friendly_name += '.pdf'
+
     return FileResponse(
         file_path,
         media_type="application/pdf",
-        filename="ograniczenia zywieniowe.pdf"
+        filename=user_friendly_name
     )

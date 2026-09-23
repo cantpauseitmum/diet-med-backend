@@ -325,13 +325,46 @@ def generate_restrictions_pdf(
         ))
 
         # Ścisłe, zweryfikowane szerokości kolumn (łącznie 523 pt robocze A4):
-        # Produkt: 165 pt, Dopuszczalna porcja: 95 pt, Uwagi i komentarz: 263 pt
-        col_widths = [165, 95, 263]
+        # Produkt: 151 pt, Dopuszczalna porcja: 112 pt, Uwagi i komentarz: 260 pt
+        col_widths = [151, 112, 260]
+
+        umiark_header_style = ParagraphStyle(
+            "UmiarkowaneHeader",
+            parent=styles["Normal"],
+            fontName=FONT_BOLD,
+            fontSize=8.5,
+            leading=11,
+            textColor=colors.HexColor("#92400e")
+        )
+        umiark_prod_style = ParagraphStyle(
+            "UmiarkowaneProd",
+            parent=styles["Normal"],
+            fontName=FONT_BOLD,
+            fontSize=8.5,
+            leading=11.5,
+            textColor=colors.HexColor("#1e293b")
+        )
+        umiark_portion_style = ParagraphStyle(
+            "UmiarkowanePortion",
+            parent=styles["Normal"],
+            fontName=FONT_NORMAL,
+            fontSize=8.5,
+            leading=11,
+            textColor=colors.HexColor("#1e293b")
+        )
+        umiark_comm_style = ParagraphStyle(
+            "UmiarkowaneComm",
+            parent=styles["Normal"],
+            fontName=FONT_NORMAL,
+            fontSize=8.0,
+            leading=10.5,
+            textColor=colors.HexColor("#1e293b")
+        )
 
         table_data = [[
-            Paragraph("<b>Produkt / Rodzaj</b>", cell_bold),
-            Paragraph("<b>Dopuszczalna porcja</b>", cell_bold),
-            Paragraph("<b>Uwagi i komentarz</b>", cell_bold)
+            Paragraph("Produkt / Rodzaj", umiark_header_style),
+            Paragraph("Dopuszczalna porcja", umiark_header_style),
+            Paragraph("Uwagi i komentarz", umiark_header_style)
         ]]
 
         for p in umiarkowane:
@@ -344,9 +377,9 @@ def generate_restrictions_pdf(
 
             comm_str = " / ".join(p["komentarze"]) if p["komentarze"] else "—"
             table_data.append([
-                Paragraph(p["rodzaj"], cell_bold),
-                Paragraph(porcja_str, cell_style),
-                Paragraph(comm_str, cell_style)
+                Paragraph(p["rodzaj"], umiark_prod_style),
+                Paragraph(porcja_str, umiark_portion_style),
+                Paragraph(comm_str, umiark_comm_style)
             ])
 
         t_umiarkowane = Table(table_data, colWidths=col_widths, repeatRows=1)
