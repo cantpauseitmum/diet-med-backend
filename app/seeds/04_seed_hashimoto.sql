@@ -1,16 +1,16 @@
 -- =========================================================
--- Wypełnienie tabeli produktów Hashimoto (355 wierszy)
+-- Wypełnienie tabeli produktów Hashimoto (350 unikalnych wierszy)
 -- =========================================================
 DROP TABLE IF EXISTS hashimoto_produkty CASCADE;
 CREATE TABLE IF NOT EXISTS hashimoto_produkty (
     id SERIAL PRIMARY KEY,
-    rodzaj VARCHAR(255) NOT NULL,
+    rodzaj VARCHAR(255) NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL CHECK (status IN ('dozwolone', 'umiarkowane', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
     komentarz TEXT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_hashimoto_produkty_rodzaj ON hashimoto_produkty(rodzaj);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hashimoto_produkty_rodzaj ON hashimoto_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_hashimoto_produkty_status ON hashimoto_produkty(status);
 
 INSERT INTO hashimoto_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
@@ -283,7 +283,6 @@ INSERT INTO hashimoto_produkty (rodzaj, status, ilosc, jednostka, komentarz) VAL
 ('kiełki rzodkiewki', 'dozwolone', NULL, NULL, NULL),
 ('kiełki fasoli mung', 'dozwolone', NULL, NULL, NULL),
 ('koper włoski', 'dozwolone', NULL, NULL, NULL),
-('kukurydza', 'dozwolone', NULL, NULL, NULL),
 ('kukurydza z puszki konserwowa', 'dozwolone', NULL, NULL, NULL),
 ('kurki', 'dozwolone', NULL, NULL, NULL),
 ('marchew', 'dozwolone', NULL, NULL, NULL),
@@ -326,13 +325,9 @@ INSERT INTO hashimoto_produkty (rodzaj, status, ilosc, jednostka, komentarz) VAL
 ('zielona fasolka', 'dozwolone', NULL, NULL, NULL),
 ('zielony groszek', 'dozwolone', NULL, NULL, NULL),
 ('ziemniak', 'dozwolone', NULL, NULL, NULL),
-('tofu miękkie', 'umiarkowane', NULL, NULL, 'Min 4 h od przyjęcia lewotyroksyny'),
-('tofu twarde', 'umiarkowane', NULL, NULL, 'Min 4 h od przyjęcia lewotyroksyny'),
 ('ciecierzyca', 'dozwolone', NULL, NULL, NULL),
-('bób', 'umiarkowane', NULL, NULL, 'Min 4 h od przyjęcia lewotyroksyny'),
 ('groch', 'umiarkowane', NULL, NULL, NULL),
 ('fasola typu Jaś', 'umiarkowane', NULL, NULL, NULL),
-('soczewica', 'dozwolone', NULL, NULL, NULL),
 ('orzech ziemny', 'umiarkowane', NULL, NULL, NULL),
 ('masło orzechowe z orzechów ziemnych', 'umiarkowane', NULL, NULL, NULL),
 ('nasiona pestki słonecznika', 'dozwolone', NULL, NULL, NULL),

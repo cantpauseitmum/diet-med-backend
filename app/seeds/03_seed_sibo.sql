@@ -1,16 +1,16 @@
 -- =========================================================
--- Wypełnienie tabeli produktów SIBO (354 wierszy)
+-- Wypełnienie tabeli produktów SIBO (349 unikalnych wierszy)
 -- =========================================================
 DROP TABLE IF EXISTS sibo_produkty CASCADE;
 CREATE TABLE IF NOT EXISTS sibo_produkty (
     id SERIAL PRIMARY KEY,
-    rodzaj VARCHAR(255) NOT NULL,
+    rodzaj VARCHAR(255) NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL CHECK (status IN ('dozwolone', 'umiarkowane', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
     komentarz TEXT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_sibo_produkty_rodzaj ON sibo_produkty(rodzaj);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sibo_produkty_rodzaj ON sibo_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_sibo_produkty_status ON sibo_produkty(status);
 
 INSERT INTO sibo_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
@@ -35,7 +35,7 @@ INSERT INTO sibo_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
 ('owies', 'umiarkowane', NULL, NULL, NULL),
 ('owies bezglutenowy', 'umiarkowane', NULL, NULL, NULL),
 ('pszenżyto', 'zakazane', NULL, NULL, NULL),
-('kukurydza', 'dozwolone', NULL, NULL, NULL),
+('kukurydza', 'umiarkowane', 40.0, 'g', NULL),
 ('gryka', 'dozwolone', NULL, NULL, NULL),
 ('proso', 'dozwolone', NULL, NULL, NULL),
 ('kasza manna', 'zakazane', NULL, NULL, NULL),
@@ -282,7 +282,6 @@ INSERT INTO sibo_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
 ('kiełki rzodkiewki', 'dozwolone', NULL, NULL, NULL),
 ('kiełki fasoli mung', 'dozwolone', NULL, NULL, NULL),
 ('koper włoski', 'umiarkowane', 45.0, 'g', NULL),
-('kukurydza', 'umiarkowane', 40.0, 'g', NULL),
 ('kukurydza z puszki konserwowa', 'umiarkowane', 75.0, 'g', NULL),
 ('kurki', 'zakazane', NULL, NULL, NULL),
 ('marchew', 'dozwolone', NULL, NULL, NULL),
@@ -325,13 +324,9 @@ INSERT INTO sibo_produkty (rodzaj, status, ilosc, jednostka, komentarz) VALUES
 ('zielona fasolka', 'umiarkowane', 75.0, 'g', NULL),
 ('zielony groszek', 'dozwolone', NULL, NULL, NULL),
 ('ziemniak', 'dozwolone', NULL, NULL, NULL),
-('tofu miękkie', 'zakazane', NULL, NULL, NULL),
-('tofu twarde', 'dozwolone', NULL, NULL, NULL),
 ('ciecierzyca', 'umiarkowane', 40.0, 'g', 'wyłącznie ze słoika/puszki, wypłukana'),
-('bób', 'zakazane', NULL, NULL, NULL),
 ('groch', 'dozwolone', NULL, NULL, NULL),
 ('fasola typu Jaś', 'dozwolone', NULL, NULL, NULL),
-('soczewica', 'umiarkowane', 45.0, 'g', 'wyłącznie ze słoika/puszki, wypłukana'),
 ('orzech ziemny', 'umiarkowane', 30.0, 'g', NULL),
 ('masło orzechowe z orzechów ziemnych', 'umiarkowane', 30.0, 'g', NULL),
 ('nasiona pestki słonecznika', 'umiarkowane', 30.0, 'g', NULL),

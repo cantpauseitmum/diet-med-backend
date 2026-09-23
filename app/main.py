@@ -67,13 +67,13 @@ def sync_product_tables(conn):
             {"kod": kod}
         )
 
-    # 2. Weryfikacja tabel z produktami
+    # 2. Weryfikacja tabel z produktami (dokładnie unikalne produkty bez duplikatów)
     tables_to_check = [
-        ("sibo_produkty", "03_seed_sibo.sql", 350),
+        ("sibo_produkty", "03_seed_sibo.sql", 349),
         ("hashimoto_produkty", "04_seed_hashimoto.sql", 350)
     ]
 
-    for table_name, seed_file, min_expected_count in tables_to_check:
+    for table_name, seed_file, expected_count in tables_to_check:
         try:
             check_sql = text(f"""
                 SELECT EXISTS (
@@ -88,10 +88,10 @@ def sync_product_tables(conn):
                 count_sql = text(f"SELECT COUNT(*) FROM {table_name}")
                 row_count = conn.execute(count_sql).scalar() or 0
                 
-            if not exists or row_count < min_expected_count:
+            if not exists or row_count != expected_count:
                 seed_path = os.path.join(seeds_dir, seed_file)
                 if os.path.exists(seed_path):
-                    logger.info(f"Inicjalizacja/aktualizacja tabeli '{table_name}' (obecnie: {row_count} wierszy, oczekiwano min. {min_expected_count})...")
+                    logger.info(f"Inicjalizacja/aktualizacja tabeli '{table_name}' (obecnie: {row_count} wierszy, oczekiwano unikalnych: {expected_count})...")
                     with open(seed_path, "r", encoding="utf-8") as f:
                         sql_commands = f.read()
                     for stmt in sql_commands.split(";"):
@@ -102,7 +102,7 @@ def sync_product_tables(conn):
                 else:
                     logger.warning(f"Plik seed {seed_path} nie został odnaleziony!")
             else:
-                logger.info(f"Tabela '{table_name}' jest aktualna ({row_count} wierszy).")
+                logger.info(f"Tabela '{table_name}' jest aktualna ({row_count} unikalnych wierszy, 0 duplikatów).")
         except Exception as err:
             logger.error(f"Błąd podczas weryfikacji tabeli '{table_name}': {err}")
 
