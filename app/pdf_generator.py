@@ -204,7 +204,39 @@ def generate_restrictions_pdf(
         elif st == "dozwolone":
             dozwolone.append(item)
 
-    # 1. SEK CJA: PRODUKTY OGRANICZONE (UMIARKOWANE)
+    # 1. SEKCJA: PRODUKTY DOZWOLONE
+    if dozwolone:
+        story.append(Paragraph("✅ Produkty Dozwolone (Bezpieczne)", h2_dozwolone))
+        story.append(Paragraph(
+            "Produkty w pełni rekomendowane w diecie:",
+            subtitle_style
+        ))
+        
+        cols_count = 3
+        table_data = []
+        row = []
+        for p in dozwolone:
+            row.append(Paragraph(f"✓ {p['rodzaj']}", cell_style))
+            if len(row) == cols_count:
+                table_data.append(row)
+                row = []
+        if row:
+            while len(row) < cols_count:
+                row.append(Paragraph("", cell_style))
+            table_data.append(row)
+
+        t_dozwolone = Table(table_data, colWidths=[173, 173, 174])
+        t_dozwolone.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f0fdf4"), colors.white]),
+        ]))
+        story.append(t_dozwolone)
+        story.append(Spacer(1, 14))
+
+    # 2. SEKCJA: PRODUKTY OGRANICZONE (UMIARKOWANE)
     if umiarkowane:
         story.append(Paragraph("⚠️ Produkty Ograniczone (Dopuszczalne w wyznaczonych porcjach)", h2_umiarkowane))
         story.append(Paragraph(
@@ -250,7 +282,7 @@ def generate_restrictions_pdf(
         story.append(t_umiarkowane)
         story.append(Spacer(1, 14))
 
-    # 2. SEKCJA: PRODUKTY ZAKAZANE
+    # 3. SEKCJA: PRODUKTY ZAKAZANE
     if zakazane:
         story.append(Paragraph("⛔ Produkty Przeciwwskazane (Zakazane)", h2_zakazane))
         story.append(Paragraph(
@@ -281,38 +313,6 @@ def generate_restrictions_pdf(
             ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#fef2f2"), colors.white]),
         ]))
         story.append(t_zakazane)
-        story.append(Spacer(1, 14))
-
-    # 3. SEKCJA: PRODUKTY DOZWOLONE
-    if dozwolone:
-        story.append(Paragraph("✅ Produkty Dozwolone (Bezpieczne)", h2_dozwolone))
-        story.append(Paragraph(
-            "Produkty w pełni rekomendowane w diecie:",
-            subtitle_style
-        ))
-        
-        cols_count = 3
-        table_data = []
-        row = []
-        for p in dozwolone:
-            row.append(Paragraph(f"✓ {p['rodzaj']}", cell_style))
-            if len(row) == cols_count:
-                table_data.append(row)
-                row = []
-        if row:
-            while len(row) < cols_count:
-                row.append(Paragraph("", cell_style))
-            table_data.append(row)
-
-        t_dozwolone = Table(table_data, colWidths=[173, 173, 174])
-        t_dozwolone.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f0fdf4"), colors.white]),
-        ]))
-        story.append(t_dozwolone)
         story.append(Spacer(1, 14))
 
     # Stopka
