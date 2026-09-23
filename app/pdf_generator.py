@@ -268,12 +268,14 @@ def generate_restrictions_pdf(
                 Paragraph(comm_str, cell_style)
             ])
 
-        t_umiarkowane = Table(table_data, colWidths=[200, 110, 210])
+        t_umiarkowane = Table(table_data, colWidths=[185, 140, 195])
         t_umiarkowane.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#92400e")),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#fde68a")),
