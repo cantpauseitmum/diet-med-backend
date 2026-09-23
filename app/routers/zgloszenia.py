@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -7,10 +8,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.database import get_db
 from app.config import settings
-from app.models import Dolegliwosc, SiboProdukt, Zgloszenie
+from app.models import Dolegliwosc, SiboProdukt, HashimotoProdukt, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
 from app.routers.dolegliwosci import find_ailment_table
+
+logger = logging.getLogger("diet_med")
 
 router = APIRouter(prefix="/api/zgloszenia", tags=["Zgłoszenia i PDF"])
 
@@ -47,6 +50,17 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                     "komentarz": p.komentarz,
                     "dolegliwosc": ailment.kod
                 })
+        elif table_name == "hashimoto_produkty":
+            hash_items = db.query(HashimotoProdukt).all()
+            for p in hash_items:
+                raw_products.append({
+                    "rodzaj": p.rodzaj,
+                    "status": p.status,
+                    "ilosc": p.ilosc,
+                    "jednostka": p.jednostka,
+                    "komentarz": p.komentarz,
+                    "dolegliwosc": ailment.kod
+                })
         elif table_name:
             try:
                 sql_fetch = text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {table_name}")
@@ -60,8 +74,10 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                         "komentarz": r[4],
                         "dolegliwosc": ailment.kod
                     })
-            except Exception:
-                pass
+            except Exception as err:
+                logger.error(f"Błąd podczas pobierania produktów z tabeli '{table_name}' dla dolegliwości '{ailment.kod}': {err}")
+        else:
+            logger.warning(f"Brak dedykowanej tabeli produktów dla dolegliwości '{ailment.kod}'.")
 
     # Jeśli nie ma jeszcze dedykowanej tabeli dla innej wybranej dolegliwości,
     # w celach demonstracyjnych raport zawiera bazę produktów SIBO
