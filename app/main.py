@@ -2,12 +2,13 @@ import os
 import re
 import glob
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.config import settings
 from app.database import engine, Base
-from app.routers import dolegliwosci, zgloszenia, sibo, hashimoto, insulinoopornosc, produkty
+from app.routers import dolegliwosci, zgloszenia, produkty
 
 # Konfiguracja logowania
 logging.basicConfig(
@@ -16,11 +17,54 @@ logging.basicConfig(
 )
 logger = logging.getLogger("diet_med")
 
-# Inicjalizacja FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Uruchamianie serwisu Diet-Med Backend...")
+    try:
+        # Upewnienie się, że tabele bazowe istnieją
+        Base.metadata.create_all(bind=engine)
+
+        with engine.begin() as conn:
+            # Idempotentna migracja tabeli zgloszenia dla istniejących wolumenów baz danych
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'zgloszenia') THEN
+                        -- 1. Zezwól na NULL w kolumnie email
+                        ALTER TABLE zgloszenia ALTER COLUMN email DROP NOT NULL;
+                        
+                        -- 2. Zmień status_wysylki na status, jeśli istnieje stara nazwa
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status_wysylki')
+                           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status') THEN
+                            ALTER TABLE zgloszenia RENAME COLUMN status_wysylki TO status;
+                        END IF;
+                        
+                        -- 3. Upewnij się, że kolumna status istnieje z domyślną wartością
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status') THEN
+                            ALTER TABLE zgloszenia ADD COLUMN status VARCHAR(50) DEFAULT 'wygenerowano';
+                        END IF;
+                    END IF;
+                END $$;
+            """))
+
+            # Dynamiczna weryfikacja i synchronizacja danych produktów
+            sync_product_tables(conn)
+
+        logger.info("Połączenie z bazą danych i weryfikacja tabel przebiegły pomyślnie.")
+    except Exception as e:
+        logger.warning(f"Ostrzeżenie przy łączeniu z bazą danych na starcie: {e}")
+
+    yield
+    logger.info("Zamykanie serwisu Diet-Med Backend...")
+
+
+# Inicjalizacja FastAPI z asynchronicznym cyklem życia lifespan
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="API dla systemu Diet-Med: lista dolegliwości TDP, uniwersalna baza produktów, generowanie dynamicznych raportów PDF i obsługa zgłoszeń pacjentów."
+    description="API dla systemu Diet-Med: lista dolegliwości TDP, uniwersalna baza produktów, generowanie dynamicznych raportów PDF i obsługa zgłoszeń pacjentów.",
+    lifespan=lifespan
 )
 
 # Konfiguracja CORS (umożliwia komunikację z frontendem)
@@ -32,13 +76,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dołączenie routerów
+# Dołączenie aktywnych routerów
 app.include_router(dolegliwosci.router)
 app.include_router(zgloszenia.router)
 app.include_router(produkty.router)
-app.include_router(sibo.router)
-app.include_router(hashimoto.router)
-app.include_router(insulinoopornosc.router)
+
 
 @app.get("/health", tags=["System"])
 def health_check():
@@ -141,40 +183,3 @@ def sync_product_tables(conn):
         except Exception as err:
             logger.error(f"Błąd podczas weryfikacji seeda {fn}: {err}")
 
-
-@app.on_event("startup")
-def on_startup():
-    logger.info("Uruchamianie serwisu Diet-Med Backend...")
-    try:
-        # Upewnienie się, że tabele bazowe istnieją
-        Base.metadata.create_all(bind=engine)
-        
-        with engine.begin() as conn:
-            # Idempotentna migracja tabeli zgloszenia dla istniejących wolumenów baz danych
-            conn.execute(text("""
-                DO $$
-                BEGIN
-                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'zgloszenia') THEN
-                        -- 1. Zezwól na NULL w kolumnie email
-                        ALTER TABLE zgloszenia ALTER COLUMN email DROP NOT NULL;
-                        
-                        -- 2. Zmień status_wysylki na status, jeśli istnieje stara nazwa
-                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status_wysylki')
-                           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status') THEN
-                            ALTER TABLE zgloszenia RENAME COLUMN status_wysylki TO status;
-                        END IF;
-                        
-                        -- 3. Upewnij się, że kolumna status istnieje z domyślną wartością
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status') THEN
-                            ALTER TABLE zgloszenia ADD COLUMN status VARCHAR(50) DEFAULT 'wygenerowano';
-                        END IF;
-                    END IF;
-                END $$;
-            """))
-            
-            # Synchronizacja i weryfikacja danych produktów dla SIBO i Hashimoto
-            sync_product_tables(conn)
-            
-        logger.info("Połączenie z bazą danych i weryfikacja tabel przebiegły pomyślnie.")
-    except Exception as e:
-        logger.warning(f"Ostrzeżenie przy łączeniu z bazą danych na starcie: {e}")

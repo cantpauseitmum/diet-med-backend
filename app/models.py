@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, Text, DateTime, func
+from sqlalchemy import Column, Integer, String, DateTime, func
 from sqlalchemy.dialects.postgresql import ARRAY
 from app.database import Base
 
@@ -8,38 +8,9 @@ class Dolegliwosc(Base):
     id = Column(Integer, primary_key=True, index=True)
     kod = Column(String(100), unique=True, nullable=False, index=True)
 
-class SiboProdukt(Base):
-    __tablename__ = "sibo_produkty"
-
-    id = Column(Integer, primary_key=True, index=True)
-    rodzaj = Column(String(255), unique=True, nullable=False, index=True)
-    status = Column(String(20), nullable=False, index=True) # 'dozwolone', 'umiarkowane', 'zakazane'
-    ilosc = Column(Numeric(10, 2), nullable=True)
-    jednostka = Column(String(50), nullable=True)
-    komentarz = Column(Text, nullable=True)
-
-class HashimotoProdukt(Base):
-    __tablename__ = "hashimoto_produkty"
-
-    id = Column(Integer, primary_key=True, index=True)
-    rodzaj = Column(String(255), unique=True, nullable=False, index=True)
-    status = Column(String(20), nullable=False, index=True) # 'dozwolone', 'umiarkowane', 'zakazane'
-    ilosc = Column(Numeric(10, 2), nullable=True)
-    jednostka = Column(String(50), nullable=True)
-    komentarz = Column(Text, nullable=True)
-
-class InsulinoopornoscProdukt(Base):
-    __tablename__ = "insulinoopornosc_produkty"
-
-    id = Column(Integer, primary_key=True, index=True)
-    rodzaj = Column(String(255), unique=True, nullable=False, index=True)
-    status = Column(String(20), nullable=False, index=True) # 'dozwolone', 'umiarkowane', 'zakazane'
-    ilosc = Column(Numeric(10, 2), nullable=True)
-    jednostka = Column(String(50), nullable=True)
-    komentarz = Column(Text, nullable=True)
-
 class Zgloszenie(Base):
     __tablename__ = "zgloszenia"
+
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), nullable=True, index=True)

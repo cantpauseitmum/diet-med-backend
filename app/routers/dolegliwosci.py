@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, Set
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import text, inspect
+from sqlalchemy import inspect
 from app.database import get_db
 from app.models import Dolegliwosc
 from app.schemas import DolegliwosciPackageOut, DolegliwoscOut

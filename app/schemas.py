@@ -38,12 +38,4 @@ class ProduktBaseOut(BaseModel):
     class Config:
         from_attributes = True
 
-class SiboProduktOut(ProduktBaseOut):
-    pass
-
-class HashimotoProduktOut(ProduktBaseOut):
-    pass
-
-class InsulinoopornoscProduktOut(ProduktBaseOut):
-    pass
 
