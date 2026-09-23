@@ -26,6 +26,26 @@ else:
     FONT_BOLD = "Helvetica-Bold"
 
 
+def merge_comments(existing_comments: list[str], new_comment: str | None) -> list[str]:
+    if not new_comment:
+        return existing_comments
+    new_c = new_comment.strip()
+    if not new_c:
+        return existing_comments
+    
+    new_lower = new_c.lower()
+    for idx, ext in enumerate(existing_comments):
+        ext_lower = ext.lower()
+        if new_lower == ext_lower or new_lower in ext_lower:
+            return existing_comments
+        if ext_lower in new_lower:
+            existing_comments[idx] = new_c
+            return existing_comments
+            
+    existing_comments.append(new_c)
+    return existing_comments
+
+
 def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
     """
     Logika łączenia produktów z wielu dolegliwości:
@@ -33,7 +53,7 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
     - Gdy 'umiarkowane':
       - ilosc i jednostka razem bez spacji (np. 135g)
       - jeśli dolegliwości mają 'umiarkowane' -> bierzemy mniejszą ilość
-    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości
+    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości (bez powtórzeń)
     """
     merged = {}
     STATUS_PRIORITY = {"dozwolone": 1, "umiarkowane": 2, "zakazane": 3}
@@ -48,7 +68,7 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
                 "status": curr_status,
                 "ilosc": item.get("ilosc") if curr_status == "umiarkowane" else None,
                 "jednostka": item.get("jednostka") if curr_status == "umiarkowane" else None,
-                "komentarze": [item.get("komentarz")] if item.get("komentarz") else []
+                "komentarze": [item.get("komentarz").strip()] if item.get("komentarz") and item.get("komentarz").strip() else []
             }
         else:
             existing = merged[key]
@@ -76,12 +96,8 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
                     existing["ilosc"] = new_qty
                     existing["jednostka"] = item.get("jednostka")
 
-            # ZAWSZE dołączamy unikalne komentarze ze wszystkich wybranych dolegliwości
-            new_comm = item.get("komentarz")
-            if new_comm:
-                norm_existing = [c.strip().lower() for c in existing["komentarze"]]
-                if new_comm.strip().lower() not in norm_existing:
-                    existing["komentarze"].append(new_comm.strip())
+            # ZAWSZE dołączamy unikalne komentarze ze wszystkich wybranych dolegliwości bez duplikatów
+            existing["komentarze"] = merge_comments(existing["komentarze"], item.get("komentarz"))
 
     return merged
 
@@ -93,138 +109,6 @@ TOP_MARGIN = 36.0
 BOTTOM_MARGIN = 36.0
 USABLE_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT  # 523.2755 pt
 
-
-def compute_umiarkowane_layout(items: list[dict], usable_width: float = USABLE_WIDTH) -> dict:
-    """
-    Dynamicznie oblicza optymalne szerokości kolumn i typografię tabeli produktów ograniczonych.
-    Elastycznie dostosowuje się do długości komentarzy, braku komentarzy lub nietypowych nazw produktów.
-    """
-    has_comments = any(bool(p.get("komentarze")) for p in items)
-
-    # 1. Zmierz zapotrzebowanie kolumny 'Porcja'
-    port_strings = []
-    for p in items:
-        if p.get("ilosc") is not None:
-            qty_str = f"{float(p['ilosc']):g}"
-            unit_str = p.get("jednostka") or ""
-            port_strings.append(f"{qty_str}{unit_str}")
-        else:
-            port_strings.append("w niewielkich ilościach")
-
-    header_port_w = pdfmetrics.stringWidth("Dopuszczalna porcja", FONT_BOLD, 9)
-    max_val_port_w = max([pdfmetrics.stringWidth(s, FONT_NORMAL, 9) for s in port_strings]) if port_strings else 0
-    # Margines komórki (4pt lewy + 4pt prawy = 8pt) + 3pt margines bezpieczeństwa
-    needed_port_w = max(header_port_w, max_val_port_w) + 11.0
-
-    # Gdy w tabeli nie ma ŻADNYCH komentarzy, redukujemy do 2 kolumn i oddajemy miejsce produktom
-    if not has_comments:
-        col_port = min(needed_port_w, usable_width * 0.35)
-        col_prod = usable_width - col_port
-        return {
-            "has_comments": False,
-            "col_widths": [col_prod, col_port],
-            "font_size": 9.0,
-            "leading": 12.0
-        }
-
-    # 2. Zmierz długości produktów i komentarzy
-    prod_widths = [pdfmetrics.stringWidth(p["rodzaj"], FONT_BOLD, 9) for p in items]
-    sorted_pw = sorted(prod_widths)
-    p85_prod_w = sorted_pw[int(len(sorted_pw) * 0.85)] if sorted_pw else 100.0
-
-    comm_strings = [" / ".join(p["komentarze"]) for p in items if p.get("komentarze")]
-    max_comm_w = max([pdfmetrics.stringWidth(c, FONT_NORMAL, 9) for c in comm_strings]) if comm_strings else 0
-
-    # Skalowanie typografii w przypadku bardzo obszernych uwag/komentarzy
-    font_size = 9.0
-    leading = 12.0
-    if max_comm_w > 450.0:
-        font_size = 8.5
-        leading = 11.0
-    if max_comm_w > 700.0:
-        font_size = 8.0
-        leading = 10.5
-
-    # Bezpieczne granice szerokości porcji
-    col_port = max(105.0, min(needed_port_w, 125.0))
-
-    # Dynamiczne dopasowanie kolumny produktu
-    # Jeśli w danym zestawie pojawiają się bardzo długie komentarze (> 250 pt),
-    # pozwalamy kolumnie produktu być bardziej zwięzłą (135 - 155 pt), aby komentarze otrzymały maksimum miejsca.
-    if max_comm_w > 250.0:
-        col_prod = max(135.0, min(p85_prod_w + 10.0, 155.0))
-    else:
-        col_prod = max(145.0, min(p85_prod_w + 10.0, 170.0))
-
-    # Kolumna komentarzy otrzymuje 100% pozostałej przestrzeni roboczej strony A4!
-    col_comm = usable_width - col_prod - col_port
-
-    return {
-        "has_comments": True,
-        "col_widths": [col_prod, col_port, col_comm],
-        "font_size": font_size,
-        "leading": leading
-    }
-
-
-def compute_dozwolone_layout(items: list[dict], usable_width: float = USABLE_WIDTH) -> tuple[int, list[float]]:
-    """
-    Dynamicznie ustala optymalną liczbę kolumn (3, 2 lub 1) i ich szerokości dla sekcji Dozwolone.
-    """
-    widths = []
-    for p in items:
-        raw_text = f"✓ {p['rodzaj']}"
-        if p.get("komentarze"):
-            raw_text += f" ({', '.join(p['komentarze'])})"
-        widths.append(pdfmetrics.stringWidth(raw_text, FONT_NORMAL, 9))
-
-    if not widths:
-        return 3, [usable_width / 3.0] * 3
-
-    max_w = max(widths)
-    sorted_w = sorted(widths)
-    p85_w = sorted_w[int(len(sorted_w) * 0.85)]
-
-    # 3 kolumny dają ~174.4 pt (po odliczeniu paddingu ~164 pt na tekst).
-    # Jeśli 85% pozycji mieści się w 160 pt, a max <= 240 pt, 3 kolumny prezentują się estetycznie i oszczędzają miejsce.
-    if p85_w <= 160.0 and max_w <= 240.0:
-        cols_count = 3
-    elif max_w <= 450.0:
-        cols_count = 2
-    else:
-        cols_count = 1
-
-    col_w = usable_width / float(cols_count)
-    return cols_count, [col_w] * cols_count
-
-
-def compute_zakazane_layout(items: list[dict], usable_width: float = USABLE_WIDTH) -> tuple[int, list[float]]:
-    """
-    Dynamicznie ustala liczbę kolumn i ich szerokości dla sekcji Zakazane.
-    """
-    widths = []
-    for p in items:
-        raw_text = f"• {p['rodzaj']}"
-        if p.get("komentarze"):
-            raw_text += f" ({', '.join(p['komentarze'])})"
-        widths.append(pdfmetrics.stringWidth(raw_text, FONT_NORMAL, 9))
-
-    if not widths:
-        return 2, [usable_width / 2.0] * 2
-
-    max_w = max(widths)
-    sorted_w = sorted(widths)
-    p90_w = sorted_w[int(len(sorted_w) * 0.90)]
-
-    if max_w <= 160.0:
-        cols_count = 3
-    elif p90_w <= 250.0 or max_w <= 480.0:
-        cols_count = 2
-    else:
-        cols_count = 1
-
-    col_w = usable_width / float(cols_count)
-    return cols_count, [col_w] * cols_count
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -255,7 +139,7 @@ class NumberedCanvas(canvas.Canvas):
 
         # 1. Bieżący dyskretny nagłówek na kolejnych stronach (strona 2+)
         if self._pageNumber > 1:
-            self.drawString(MARGIN_LEFT, PAGE_HEIGHT - 24, "Diet-Med • TDP — Spersonalizowany Raport Ograniczeń Żywieniowych")
+            self.drawString(MARGIN_LEFT, PAGE_HEIGHT - 24, "Diet-Med | TDP — Spersonalizowany Raport Ograniczeń Żywieniowych")
             self.setStrokeColor(colors.HexColor("#cbd5e1"))
             self.setLineWidth(0.5)
             self.line(MARGIN_LEFT, PAGE_HEIGHT - 28, PAGE_WIDTH - MARGIN_RIGHT, PAGE_HEIGHT - 28)
@@ -263,7 +147,7 @@ class NumberedCanvas(canvas.Canvas):
         # 2. Bieżąca stopka na każdej stronie
         page_str = f"Strona {self._pageNumber} z {page_count}"
         self.drawRightString(PAGE_WIDTH - MARGIN_RIGHT, 16, page_str)
-        self.drawString(MARGIN_LEFT, 16, "Diet-Med (TDP) • Zalecenia pomocnicze. W razie wątpliwości skonsultuj się ze specjalistą.")
+        self.drawString(MARGIN_LEFT, 16, "Diet-Med (TDP) — Zalecenia pomocnicze. W razie wątpliwości skonsultuj się ze specjalistą.")
 
         # Linia nad stopką
         self.setStrokeColor(colors.HexColor("#e2e8f0"))
@@ -369,7 +253,7 @@ def generate_restrictions_pdf(
 
     # Nagłówek dokumentu
     pacjent_info = f"<b>Pacjent:</b> {email} &nbsp;|&nbsp; " if email else ""
-    story.append(Paragraph("Diet-Med • Test Doboru Produktów dla Zdrowia (TDP)", subtitle_style))
+    story.append(Paragraph("Diet-Med — Test Doboru Produktów dla Zdrowia (TDP)", subtitle_style))
     story.append(Paragraph("Ograniczenia Żywieniowe", title_style))
     story.append(Paragraph(
         f"{pacjent_info}"
@@ -401,7 +285,8 @@ def generate_restrictions_pdf(
             subtitle_style
         ))
 
-        cols_count, col_widths = compute_dozwolone_layout(dozwolone, USABLE_WIDTH)
+        cols_count = 3
+        col_widths = [173, 173, 174]
         table_data = []
         row = []
         for p in dozwolone:
@@ -439,35 +324,15 @@ def generate_restrictions_pdf(
             subtitle_style
         ))
 
-        um_layout = compute_umiarkowane_layout(umiarkowane, USABLE_WIDTH)
-        has_comm = um_layout["has_comments"]
-        col_widths = um_layout["col_widths"]
+        # Ścisłe, zweryfikowane szerokości kolumn (łącznie 523 pt robocze A4):
+        # Produkt: 165 pt, Dopuszczalna porcja: 95 pt, Uwagi i komentarz: 263 pt
+        col_widths = [165, 95, 263]
 
-        # Dynamiczne style z zachowaniem odpowiedniego rozmiaru fontu
-        um_cell_style = ParagraphStyle(
-            "UmTableCell",
-            parent=cell_style,
-            fontSize=um_layout["font_size"],
-            leading=um_layout["leading"]
-        )
-        um_cell_bold = ParagraphStyle(
-            "UmTableCellBold",
-            parent=cell_bold,
-            fontSize=um_layout["font_size"],
-            leading=um_layout["leading"]
-        )
-
-        if has_comm:
-            table_data = [[
-                Paragraph("<b>Produkt / Rodzaj</b>", um_cell_bold),
-                Paragraph("<b>Dopuszczalna porcja</b>", um_cell_bold),
-                Paragraph("<b>Uwagi i komentarz</b>", um_cell_bold)
-            ]]
-        else:
-            table_data = [[
-                Paragraph("<b>Produkt / Rodzaj</b>", um_cell_bold),
-                Paragraph("<b>Dopuszczalna porcja</b>", um_cell_bold)
-            ]]
+        table_data = [[
+            Paragraph("<b>Produkt / Rodzaj</b>", cell_bold),
+            Paragraph("<b>Dopuszczalna porcja</b>", cell_bold),
+            Paragraph("<b>Uwagi i komentarz</b>", cell_bold)
+        ]]
 
         for p in umiarkowane:
             if p["ilosc"] is not None:
@@ -477,18 +342,12 @@ def generate_restrictions_pdf(
             else:
                 porcja_str = "w niewielkich ilościach"
 
-            if has_comm:
-                comm_str = " / ".join(p["komentarze"]) if p["komentarze"] else "—"
-                table_data.append([
-                    Paragraph(p["rodzaj"], um_cell_bold),
-                    Paragraph(porcja_str, um_cell_style),
-                    Paragraph(comm_str, um_cell_style)
-                ])
-            else:
-                table_data.append([
-                    Paragraph(p["rodzaj"], um_cell_bold),
-                    Paragraph(porcja_str, um_cell_style)
-                ])
+            comm_str = " / ".join(p["komentarze"]) if p["komentarze"] else "—"
+            table_data.append([
+                Paragraph(p["rodzaj"], cell_bold),
+                Paragraph(porcja_str, cell_style),
+                Paragraph(comm_str, cell_style)
+            ])
 
         t_umiarkowane = Table(table_data, colWidths=col_widths, repeatRows=1)
         t_umiarkowane.setStyle(TableStyle([
@@ -498,8 +357,8 @@ def generate_restrictions_pdf(
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#fde68a")),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffbeb")]),
         ]))
@@ -516,7 +375,8 @@ def generate_restrictions_pdf(
             subtitle_style
         ))
 
-        cols_count, col_widths = compute_zakazane_layout(zakazane, USABLE_WIDTH)
+        cols_count = 2
+        col_widths = [261, 262]
         table_data = []
         row = []
         for p in zakazane:

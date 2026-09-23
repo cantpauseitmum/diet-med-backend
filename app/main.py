@@ -2,6 +2,7 @@ import os
 import re
 import glob
 import logging
+import hashlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -137,6 +138,16 @@ def sync_product_tables(conn):
         logger.warning(f"Ostrzeżenie przy czyszczeniu duplikatów w dolegliwosci: {err}")
 
     # 2. Dynamiczne wykrywanie i weryfikacja wszystkich plików seedów tabel produktów
+    try:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS _seed_metadata (
+                filename VARCHAR(100) PRIMARY KEY,
+                checksum VARCHAR(64) NOT NULL
+            );
+        """))
+    except Exception as e:
+        logger.warning(f"Ostrzeżenie przy tworzeniu _seed_metadata: {e}")
+
     seed_files = sorted(glob.glob(os.path.join(seeds_dir, "*.sql")))
     for seed_path in seed_files:
         fn = os.path.basename(seed_path)
@@ -146,6 +157,8 @@ def sync_product_tables(conn):
         try:
             with open(seed_path, "r", encoding="utf-8") as f:
                 content = f.read()
+
+            file_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
             # Dynamicznie odczytaj nazwę tabeli z CREATE TABLE
             m_table = re.search(r"CREATE TABLE IF NOT EXISTS\s+([a-zA-Z0-9_]+)", content, re.IGNORECASE)
@@ -169,12 +182,28 @@ def sync_product_tables(conn):
                 count_sql = text(f"SELECT COUNT(*) FROM {table_name}")
                 row_count = conn.execute(count_sql).scalar() or 0
 
-            if not exists or (expected_count > 0 and row_count != expected_count):
+            stored_hash = None
+            try:
+                stored_hash = conn.execute(
+                    text("SELECT checksum FROM _seed_metadata WHERE filename = :fn"),
+                    {"fn": fn}
+                ).scalar()
+            except Exception:
+                pass
+
+            if not exists or stored_hash != file_hash or (expected_count > 0 and row_count != expected_count):
                 logger.info(f"Dynamiczna inicjalizacja/aktualizacja tabeli '{table_name}' z {fn} (obecnie: {row_count}, oczekiwano: {expected_count})...")
                 for stmt in content.split(";"):
                     clean_stmt = stmt.strip()
                     if clean_stmt:
                         conn.execute(text(clean_stmt))
+                try:
+                    conn.execute(
+                        text("INSERT INTO _seed_metadata (filename, checksum) VALUES (:fn, :hash) ON CONFLICT (filename) DO UPDATE SET checksum = :hash"),
+                        {"fn": fn, "hash": file_hash}
+                    )
+                except Exception:
+                    pass
                 logger.info(f"Pomyślnie załadowano seedy dla '{table_name}' ({expected_count} wierszy).")
             else:
                 logger.info(f"Tabela '{table_name}' jest aktualna ({row_count} wierszy, plik: {fn}).")
