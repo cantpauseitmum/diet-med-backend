@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -53,22 +54,25 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
     - Gdy 'umiarkowane':
       - ilosc i jednostka razem bez spacji (np. 135g)
       - jeśli dolegliwości mają 'umiarkowane' -> bierzemy mniejszą ilość
-    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości (bez powtórzeń)
+    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości (bez powtórzeń) dla 'dozwolone' i 'umiarkowane'.
+    - W produktach 'zakazane' komentarze nie występują.
     """
     merged = {}
     STATUS_PRIORITY = {"dozwolone": 1, "umiarkowane": 2, "zakazane": 3}
 
     for item in products_by_ailment:
-        key = item["rodzaj"].strip().lower()
+        raw_name = item["rodzaj"].strip()
+        clean_name = re.sub(r'^[•✓✔\*\-\.\s]+', '', raw_name).strip() or raw_name
+        key = clean_name.lower()
         curr_status = item.get("status", "dozwolone")
 
         if key not in merged:
             merged[key] = {
-                "rodzaj": item["rodzaj"].strip(),
+                "rodzaj": clean_name,
                 "status": curr_status,
                 "ilosc": item.get("ilosc") if curr_status == "umiarkowane" else None,
                 "jednostka": item.get("jednostka") if curr_status == "umiarkowane" else None,
-                "komentarze": [item.get("komentarz").strip()] if item.get("komentarz") and item.get("komentarz").strip() else []
+                "komentarze": [item.get("komentarz").strip()] if (curr_status != "zakazane" and item.get("komentarz") and item.get("komentarz").strip()) else []
             }
         else:
             existing = merged[key]
@@ -84,6 +88,7 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
                 elif curr_status == "zakazane":
                     existing["ilosc"] = None
                     existing["jednostka"] = None
+                    existing["komentarze"] = []
             elif new_score == existing_score and curr_status == "umiarkowane":
                 # Konflikt dwóch ograniczeń: wybieramy mniejszą ilość
                 new_qty = item.get("ilosc")
@@ -96,8 +101,11 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
                     existing["ilosc"] = new_qty
                     existing["jednostka"] = item.get("jednostka")
 
-            # ZAWSZE dołączamy unikalne komentarze ze wszystkich wybranych dolegliwości bez duplikatów
-            existing["komentarze"] = merge_comments(existing["komentarze"], item.get("komentarz"))
+            # Dołączamy unikalne komentarze bez duplikatów (wyłącznie dla produktów dozwolonych i umiarkowanych)
+            if existing["status"] == "zakazane":
+                existing["komentarze"] = []
+            else:
+                existing["komentarze"] = merge_comments(existing["komentarze"], item.get("komentarz"))
 
     return merged
 
@@ -290,7 +298,7 @@ def generate_restrictions_pdf(
         table_data = []
         row = []
         for p in dozwolone:
-            text_p = f"✓ {p['rodzaj']}"
+            text_p = p['rodzaj']
             if p.get("komentarze"):
                 comm_joined = ", ".join(p["komentarze"])
                 text_p += f' <font color="#047857"><i>({comm_joined})</i></font>'
@@ -413,10 +421,7 @@ def generate_restrictions_pdf(
         table_data = []
         row = []
         for p in zakazane:
-            text_p = f"• {p['rodzaj']}"
-            if p.get("komentarze"):
-                comm_joined = ", ".join(p["komentarze"])
-                text_p += f' <font color="#991b1b"><i>({comm_joined})</i></font>'
+            text_p = p['rodzaj']
             row.append(Paragraph(text_p, cell_style))
             if len(row) == cols_count:
                 table_data.append(row)
