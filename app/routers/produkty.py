@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/produkty", tags=["Uniwersalne Produkty"])
 def get_products_by_ailment(
     dolegliwosc: str,
     q: Optional[str] = Query(None, description="Wyszukiwanie po nazwie / rodzaju produktu"),
-    status: Optional[str] = Query(None, description="Filtrowanie: dozwolone, umiarkowane, zakazane"),
+    status: Optional[str] = Query(None, description="Filtrowanie: zalecane, dozwolone, ograniczone, zakazane"),
     db: Session = Depends(get_db)
 ):
     """
@@ -34,13 +34,14 @@ def get_products_by_ailment(
     conditions = []
     params = {}
 
-    if q and q.strip():
+    if q and isinstance(q, str) and q.strip():
         conditions.append("LOWER(rodzaj) LIKE LOWER(:q)")
         params["q"] = f"%{q.strip()}%"
 
-    if status and status.strip():
+    if status and isinstance(status, str) and status.strip():
         conditions.append("status = :status")
         params["status"] = status.strip().lower()
+
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query_sql = text(f"""

@@ -149,6 +149,36 @@ def sync_product_tables(conn):
         logger.warning(f"Ostrzeżenie przy tworzeniu _seed_metadata: {e}")
 
     seed_files = sorted(glob.glob(os.path.join(seeds_dir, "*.sql")))
+
+    # Wykrycie aktywnych tabel ze wszystkich seedów
+    active_seed_tables = set()
+    for seed_path in seed_files:
+        fn = os.path.basename(seed_path)
+        if fn in ("01_init_schema.sql", "02_seed_tdp.sql"):
+            continue
+        try:
+            with open(seed_path, "r", encoding="utf-8") as f:
+                c = f.read()
+            m_t = re.search(r"CREATE TABLE IF NOT EXISTS\s+([a-zA-Z0-9_]+)", c, re.IGNORECASE)
+            if m_t:
+                active_seed_tables.add(m_t.group(1).lower())
+        except Exception:
+            pass
+
+    # Usunięcie starych tabel z bazy, które nie mają już odpowiednika w aktualnych plikach seedów
+    try:
+        conn.execute(text("DROP TABLE IF EXISTS sibo_produkty CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS hashimoto_produkty CASCADE;"))
+        existing_db_tables = conn.execute(text("""
+            SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE '%_produkty'
+        """)).fetchall()
+        for (tbl,) in existing_db_tables:
+            if tbl.lower() not in active_seed_tables:
+                logger.info(f"Usuwanie nieużywanej tabeli '{tbl}' z bazy danych...")
+                conn.execute(text(f"DROP TABLE IF EXISTS {tbl} CASCADE;"))
+    except Exception as e:
+        logger.warning(f"Ostrzeżenie przy czyszczeniu starych tabel produktów: {e}")
+
     for seed_path in seed_files:
         fn = os.path.basename(seed_path)
         if fn in ("01_init_schema.sql", "02_seed_tdp.sql"):

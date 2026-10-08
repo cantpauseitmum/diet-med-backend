@@ -36,11 +36,6 @@ def find_ailment_table(kod: str, existing_tables: Set[str]) -> Optional[str]:
         clean_raw
     ]
     
-    if "sibo" in kod_raw:
-        candidates.insert(0, "sibo_produkty")
-    if "imo" in kod_raw:
-        candidates.insert(0, "imo_produkty")
-
     for cand in candidates:
         if cand in existing_tables and cand not in IGNORED_TABLES:
             return cand

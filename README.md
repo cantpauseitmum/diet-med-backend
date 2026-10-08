@@ -6,12 +6,12 @@ REST API systemu **Diet-Med**, oparte o framework FastAPI, zoptymalizowane do wd
 - `GET /api/dolegliwosci` – zwraca paczkę danych z listą dolegliwości z bazy danych (ważną przez 1h z nagłówkiem `Cache-Control`).
 - `POST /api/zgloszenia` – odbiera JSON z listą ID dolegliwości zaznaczonych jako „Tak”:
   - Pobiera wytyczne dietetyczne dla zaznaczonych dolegliwości,
-  - Rozstrzyga konflikty (priorytet: `zakazane` > `ograniczone` > `dozwolone`, mniejsza ilość przy ograniczeniach, łączenie odmiennych komentarzy),
-  - Generuje dokument PDF: `ograniczenia zywieniowe.pdf`,
+  - Rozstrzyga konflikty (priorytet: `zakazane` > `ograniczone` > `dozwolone` > `zalecane`, mniejsza ilość przy ograniczeniach, łączenie odmiennych komentarzy),
+  - Generuje dokument PDF w 4 sekcjach: `zalecane`, `dozwolone`, `ograniczone`, `zakazane`,
   - Zapisuje zgłoszenie w bazie PostgreSQL,
-  - Zwraca link do bezpośredniego pobrania pliku PDF.
-- `GET /api/zgloszenia/pobierz-pdf/{filename}` – bezpośrednie pobieranie pliku PDF `ograniczenia zywieniowe.pdf`.
-- `GET /api/sibo/produkty` – wyszukiwanie produktów SIBO wg nazwy (`rodzaj`) i statusu.
+  - Zwraca podsumowanie statystyczne i link do bezpośredniego pobrania pliku PDF.
+- `GET /api/zgloszenia/pobierz-pdf/{filename}` – bezpośrednie pobieranie pliku PDF `ograniczenia_zywieniowe.pdf`.
+- `GET /api/produkty/{dolegliwosc}` – wyszukiwanie produktów wg nazwy (`rodzaj`) i statusu (`zalecane`, `dozwolone`, `ograniczone`, `zakazane`).
 - `GET /docs` – interaktywna dokumentacja Swagger UI.
 
 ## Uruchomienie lokalne (Docker)

@@ -50,62 +50,79 @@ def merge_comments(existing_comments: list[str], new_comment: str | None) -> lis
 def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
     """
     Logika łączenia produktów z wielu dolegliwości:
-    - Priorytet: 'zakazane' > 'umiarkowane' > 'dozwolone'
-    - Gdy 'umiarkowane':
-      - ilosc i jednostka razem bez spacji (np. 135g)
-      - jeśli dolegliwości mają 'umiarkowane' -> bierzemy mniejszą ilość
-    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości (bez powtórzeń) dla 'dozwolone' i 'umiarkowane'.
-    - W produktach 'zakazane' komentarze nie występują.
+    - Priorytet: 'zakazane' > 'ograniczone' > 'dozwolone' > 'zalecane'
+    - Gdy 'ograniczone' / 'dozwolone' / 'zalecane':
+      - zachowujemy ilość i jednostkę
+      - jeśli dolegliwości mają ten sam status i oba mają ilość -> bierzemy mniejszą ilość
+    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości (bez powtórzeń) dla produktów innych niż 'zakazane'.
+    - W produktach 'zakazane' komentarze i porcje nie występują.
     """
     merged = {}
-    STATUS_PRIORITY = {"dozwolone": 1, "umiarkowane": 2, "zakazane": 3}
+    STATUS_PRIORITY = {
+        "zalecane": 1,
+        "dozwolone": 2,
+        "ograniczone": 3,
+        "zakazane": 4
+    }
 
     for item in products_by_ailment:
         raw_name = item["rodzaj"].strip()
         clean_name = re.sub(r'^[•✓✔\*\-\.\s]+', '', raw_name).strip() or raw_name
         key = clean_name.lower()
-        curr_status = item.get("status", "dozwolone")
+        curr_status = item.get("status", "zalecane")
+
+        qty = item.get("ilosc")
+        unit = item.get("jednostka")
+        raw_comm = item.get("komentarz")
+        comm = raw_comm.strip() if (isinstance(raw_comm, str) and raw_comm.strip()) else None
 
         if key not in merged:
             merged[key] = {
                 "rodzaj": clean_name,
                 "status": curr_status,
-                "ilosc": item.get("ilosc") if curr_status == "umiarkowane" else None,
-                "jednostka": item.get("jednostka") if curr_status == "umiarkowane" else None,
-                "komentarze": [item.get("komentarz").strip()] if (curr_status != "zakazane" and item.get("komentarz") and item.get("komentarz").strip()) else []
+                "ilosc": qty if curr_status != "zakazane" else None,
+                "jednostka": unit if curr_status != "zakazane" else None,
+                "komentarze": [comm] if (curr_status != "zakazane" and comm) else []
             }
         else:
             existing = merged[key]
             existing_score = STATUS_PRIORITY.get(existing["status"], 0)
             new_score = STATUS_PRIORITY.get(curr_status, 0)
 
-            # Wyższy priorytet zastępuje niższy w kwestii statusu
+            # Wyższy priorytet zastępuje niższy w kwestii statusu (zakazane > ograniczone > dozwolone > zalecane)
             if new_score > existing_score:
                 existing["status"] = curr_status
-                if curr_status == "umiarkowane":
-                    existing["ilosc"] = item.get("ilosc")
-                    existing["jednostka"] = item.get("jednostka")
-                elif curr_status == "zakazane":
+                if curr_status == "zakazane":
                     existing["ilosc"] = None
                     existing["jednostka"] = None
                     existing["komentarze"] = []
-            elif new_score == existing_score and curr_status == "umiarkowane":
-                # Konflikt dwóch ograniczeń: wybieramy mniejszą ilość
-                new_qty = item.get("ilosc")
-                old_qty = existing.get("ilosc")
-                if new_qty is not None and old_qty is not None:
-                    if float(new_qty) < float(old_qty):
-                        existing["ilosc"] = new_qty
-                        existing["jednostka"] = item.get("jednostka") or existing.get("jednostka")
-                elif new_qty is not None and old_qty is None:
-                    existing["ilosc"] = new_qty
-                    existing["jednostka"] = item.get("jednostka")
-
-            # Dołączamy unikalne komentarze bez duplikatów (wyłącznie dla produktów dozwolonych i umiarkowanych)
-            if existing["status"] == "zakazane":
-                existing["komentarze"] = []
+                else:
+                    if qty is not None:
+                        existing["ilosc"] = qty
+                    if unit:
+                        existing["jednostka"] = unit
+                    if comm:
+                        existing["komentarze"] = merge_comments(existing["komentarze"], comm)
+            elif new_score == existing_score:
+                if curr_status != "zakazane":
+                    old_qty = existing.get("ilosc")
+                    if qty is not None and old_qty is not None:
+                        if float(qty) < float(old_qty):
+                            existing["ilosc"] = qty
+                            existing["jednostka"] = unit or existing.get("jednostka")
+                    elif qty is not None and old_qty is None:
+                        existing["ilosc"] = qty
+                        existing["jednostka"] = unit
+                    if comm:
+                        existing["komentarze"] = merge_comments(existing["komentarze"], comm)
             else:
-                existing["komentarze"] = merge_comments(existing["komentarze"], item.get("komentarz"))
+                # new_score < existing_score: zachowujemy status wyższego priorytetu
+                if existing["status"] != "zakazane":
+                    if existing["ilosc"] is None and qty is not None:
+                        existing["ilosc"] = qty
+                        existing["jednostka"] = unit
+                    if comm:
+                        existing["komentarze"] = merge_comments(existing["komentarze"], comm)
 
     return merged
 
@@ -206,6 +223,39 @@ def generate_restrictions_pdf(
         spaceAfter=15
     )
 
+    h2_zalecane = ParagraphStyle(
+        "H2Zalecane",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#065f46"),
+        spaceBefore=14,
+        spaceAfter=6
+    )
+
+    h2_dozwolone = ParagraphStyle(
+        "H2Dozwolone",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#0284c7"),
+        spaceBefore=14,
+        spaceAfter=6
+    )
+
+    h2_ograniczone = ParagraphStyle(
+        "H2Ograniczone",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#b45309"),
+        spaceBefore=14,
+        spaceAfter=6
+    )
+
     h2_zakazane = ParagraphStyle(
         "H2Zakazane",
         parent=styles["Normal"],
@@ -217,34 +267,12 @@ def generate_restrictions_pdf(
         spaceAfter=6
     )
 
-    h2_umiarkowane = ParagraphStyle(
-        "H2Umiarkowane",
-        parent=styles["Normal"],
-        fontName=FONT_BOLD,
-        fontSize=13,
-        leading=16,
-        textColor=colors.HexColor("#b45309"),
-        spaceBefore=14,
-        spaceAfter=6
-    )
-
-    h2_dozwolone = ParagraphStyle(
-        "H2Dozwolone",
-        parent=styles["Normal"],
-        fontName=FONT_BOLD,
-        fontSize=13,
-        leading=16,
-        textColor=colors.HexColor("#065f46"),
-        spaceBefore=14,
-        spaceAfter=6
-    )
-
     cell_style = ParagraphStyle(
         "TableCell",
         parent=styles["Normal"],
         fontName=FONT_NORMAL,
-        fontSize=9,
-        leading=12,
+        fontSize=8.5,
+        leading=11.5,
         textColor=colors.HexColor("#1e293b")
     )
 
@@ -271,25 +299,73 @@ def generate_restrictions_pdf(
     ))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=14))
 
-    # Podział produktów wg kategorii
-    zakazane = []
-    umiarkowane = []
+    # Podział produktów wg 4 kategorii w wymaganej kolejności: zalecane, dozwolone, ograniczone, zakazane
+    zalecane = []
     dozwolone = []
+    ograniczone = []
+    zakazane = []
 
-    for item in sorted(merged_products.values(), key=lambda x: x["rodzaj"]):
+    for item in sorted(merged_products.values(), key=lambda x: x["rodzaj"].lower()):
         st = item["status"]
-        if st == "zakazane":
-            zakazane.append(item)
-        elif st == "umiarkowane":
-            umiarkowane.append(item)
+        if st == "zalecane":
+            zalecane.append(item)
         elif st == "dozwolone":
             dozwolone.append(item)
+        elif st == "ograniczone":
+            ograniczone.append(item)
+        elif st == "zakazane":
+            zakazane.append(item)
 
-    # 1. SEKCJA: PRODUKTY DOZWOLONE
-    if dozwolone:
-        story.append(Paragraph("✅ Produkty Dozwolone (Bezpieczne)", h2_dozwolone))
+    # 1. SEKCJA: PRODUKTY ZALECANE
+    if zalecane:
+        story.append(Paragraph("★ Produkty Zalecane (Szczególnie Rekomendowane)", h2_zalecane))
         story.append(Paragraph(
-            "Produkty w pełni rekomendowane w diecie:",
+            "Produkty o udowodnionym korzystnym wpływie przy wskazanych dolegliwościach (najwyższa rekomendacja):",
+            subtitle_style
+        ))
+
+        cols_count = 3
+        col_widths = [173, 173, 174]
+        table_data = []
+        row = []
+        for p in zalecane:
+            text_p = p['rodzaj']
+            details = []
+            if p.get("ilosc") is not None:
+                qty_s = f"{float(p['ilosc']):g}"
+                u_s = p.get('jednostka') or ''
+                details.append(f"{qty_s}{u_s}")
+            if p.get("komentarze"):
+                details.append(", ".join(p["komentarze"]))
+            if details:
+                text_p += f' <font color="#047857"><i>({" - ".join(details)})</i></font>'
+            row.append(Paragraph(text_p, cell_style))
+            if len(row) == cols_count:
+                table_data.append(row)
+                row = []
+        if row:
+            while len(row) < cols_count:
+                row.append(Paragraph("", cell_style))
+            table_data.append(row)
+
+        t_zalecane = Table(table_data, colWidths=col_widths)
+        t_zalecane.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#ecfdf5"), colors.white]),
+        ]))
+        story.append(t_zalecane)
+        story.append(Spacer(1, 14))
+
+    # 2. SEKCJA: PRODUKTY DOZWOLONE
+    if dozwolone:
+        if zalecane:
+            story.append(PageBreak())
+        story.append(Paragraph("✓ Produkty Dozwolone (Bezpieczne)", h2_dozwolone))
+        story.append(Paragraph(
+            "Produkty bezpieczne w codziennej diecie, niepowodujące zaostrzenia objawów:",
             subtitle_style
         ))
 
@@ -299,9 +375,15 @@ def generate_restrictions_pdf(
         row = []
         for p in dozwolone:
             text_p = p['rodzaj']
+            details = []
+            if p.get("ilosc") is not None:
+                qty_s = f"{float(p['ilosc']):g}"
+                u_s = p.get('jednostka') or ''
+                details.append(f"{qty_s}{u_s}")
             if p.get("komentarze"):
-                comm_joined = ", ".join(p["komentarze"])
-                text_p += f' <font color="#047857"><i>({comm_joined})</i></font>'
+                details.append(", ".join(p["komentarze"]))
+            if details:
+                text_p += f' <font color="#0284c7"><i>({" - ".join(details)})</i></font>'
             row.append(Paragraph(text_p, cell_style))
             if len(row) == cols_count:
                 table_data.append(row)
@@ -317,51 +399,49 @@ def generate_restrictions_pdf(
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f0fdf4"), colors.white]),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f0f9ff"), colors.white]),
         ]))
         story.append(t_dozwolone)
         story.append(Spacer(1, 14))
 
-    # 2. SEKCJA: PRODUKTY OGRANICZONE (UMIARKOWANE)
-    if umiarkowane:
-        if dozwolone:
+    # 3. SEKCJA: PRODUKTY OGRANICZONE
+    if ograniczone:
+        if zalecane or dozwolone:
             story.append(PageBreak())
-        story.append(Paragraph("⚠️ Produkty Ograniczone (Dopuszczalne w wyznaczonych porcjach)", h2_umiarkowane))
+        story.append(Paragraph("⚠️ Produkty Ograniczone (Dopuszczalne w wyznaczonych porcjach)", h2_ograniczone))
         story.append(Paragraph(
             "Poniższe produkty można spożywać wyłącznie z uwzględnieniem wskazanej gramatury/ilości oraz uwag dodatkowych:",
             subtitle_style
         ))
 
-        # Ścisłe, zweryfikowane szerokości kolumn (łącznie 523 pt robocze A4):
-        # Produkt: 151 pt, Dopuszczalna porcja: 112 pt, Uwagi i komentarz: 260 pt
         col_widths = [151, 112, 260]
 
-        umiark_header_style = ParagraphStyle(
-            "UmiarkowaneHeader",
+        ogran_header_style = ParagraphStyle(
+            "OgraniczoneHeader",
             parent=styles["Normal"],
             fontName=FONT_BOLD,
             fontSize=8.5,
             leading=11,
             textColor=colors.HexColor("#92400e")
         )
-        umiark_prod_style = ParagraphStyle(
-            "UmiarkowaneProd",
+        ogran_prod_style = ParagraphStyle(
+            "OgraniczoneProd",
             parent=styles["Normal"],
             fontName=FONT_BOLD,
             fontSize=8.5,
             leading=11.5,
             textColor=colors.HexColor("#1e293b")
         )
-        umiark_portion_style = ParagraphStyle(
-            "UmiarkowanePortion",
+        ogran_portion_style = ParagraphStyle(
+            "OgraniczonePortion",
             parent=styles["Normal"],
             fontName=FONT_NORMAL,
             fontSize=8.5,
             leading=11,
             textColor=colors.HexColor("#1e293b")
         )
-        umiark_comm_style = ParagraphStyle(
-            "UmiarkowaneComm",
+        ogran_comm_style = ParagraphStyle(
+            "OgraniczoneComm",
             parent=styles["Normal"],
             fontName=FONT_NORMAL,
             fontSize=8.0,
@@ -370,28 +450,28 @@ def generate_restrictions_pdf(
         )
 
         table_data = [[
-            Paragraph("Produkt / Rodzaj", umiark_header_style),
-            Paragraph("Dopuszczalna porcja", umiark_header_style),
-            Paragraph("Uwagi i komentarz", umiark_header_style)
+            Paragraph("Produkt / Rodzaj", ogran_header_style),
+            Paragraph("Dopuszczalna porcja", ogran_header_style),
+            Paragraph("Uwagi i komentarz", ogran_header_style)
         ]]
 
-        for p in umiarkowane:
-            if p["ilosc"] is not None:
+        for p in ograniczone:
+            if p.get("ilosc") is not None:
                 qty_str = f"{float(p['ilosc']):g}"
                 unit_str = p.get("jednostka") or ""
                 porcja_str = f"{qty_str}{unit_str}"
             else:
                 porcja_str = "w niewielkich ilościach"
 
-            comm_str = " / ".join(p["komentarze"]) if p["komentarze"] else "—"
+            comm_str = " / ".join(p["komentarze"]) if p.get("komentarze") else "—"
             table_data.append([
-                Paragraph(p["rodzaj"], umiark_prod_style),
-                Paragraph(porcja_str, umiark_portion_style),
-                Paragraph(comm_str, umiark_comm_style)
+                Paragraph(p["rodzaj"], ogran_prod_style),
+                Paragraph(porcja_str, ogran_portion_style),
+                Paragraph(comm_str, ogran_comm_style)
             ])
 
-        t_umiarkowane = Table(table_data, colWidths=col_widths, repeatRows=1)
-        t_umiarkowane.setStyle(TableStyle([
+        t_ograniczone = Table(table_data, colWidths=col_widths, repeatRows=1)
+        t_ograniczone.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#92400e")),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
@@ -403,14 +483,14 @@ def generate_restrictions_pdf(
             ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#fde68a")),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffbeb")]),
         ]))
-        story.append(t_umiarkowane)
+        story.append(t_ograniczone)
         story.append(Spacer(1, 14))
 
-    # 3. SEKCJA: PRODUKTY ZAKAZANE
+    # 4. SEKCJA: PRODUKTY ZAKAZANE
     if zakazane:
-        if dozwolone or umiarkowane:
+        if zalecane or dozwolone or ograniczone:
             story.append(PageBreak())
-        story.append(Paragraph("⛔ Produkty Przeciwwskazane (Zakazane)", h2_zakazane))
+        story.append(Paragraph("✕ Produkty Przeciwwskazane (Zakazane)", h2_zakazane))
         story.append(Paragraph(
             "Tych produktów należy bezwzględnie unikać przy wskazanych dolegliwościach:",
             subtitle_style

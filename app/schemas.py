@@ -26,9 +26,10 @@ class ZgloszenieResponse(BaseModel):
     pdf_filename: str
     pdf_download_url: str
     email: Optional[str] = None
+    statystyki: Optional[dict] = None
 
 class ProduktBaseOut(BaseModel):
-    id: int
+    id: Optional[int] = None
     rodzaj: str
     status: str
     ilosc: Optional[float] = None

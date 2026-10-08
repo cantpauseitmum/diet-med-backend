@@ -60,9 +60,9 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
             logger.warning(f"Brak dedykowanej tabeli produktów dla dolegliwości '{ailment.kod}'.")
 
     # Jeśli żadna z zaznaczonych dolegliwości nie miała dedykowanej tabeli,
-    # w celach demonstracyjnych raport zawiera pierwszą dostępną bazę (np. sibo_produkty)
+    # w celach demonstracyjnych raport zawiera pierwszą dostępną bazę (np. insulinoopornosc_produkty)
     if not raw_products and selected_records:
-        fallback_table = "sibo_produkty" if "sibo_produkty" in existing_tables else next((t for t in existing_tables if t.endswith("_produkty")), None)
+        fallback_table = next((t for t in sorted(existing_tables) if t.endswith("_produkty")), None)
         if fallback_table:
             rows = db.execute(text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {fallback_table}")).fetchall()
             for r in rows:
@@ -76,8 +76,17 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                 })
 
     # 3. Rozstrzygnięcie konfliktów zgodnie z logiką:
-    # priorytet zakazane > ograniczone > dozwolone, min ilosc, połączenie komentarzy
+    # priorytet zakazane > ograniczone > dozwolone > zalecane, min ilosc, połączenie komentarzy
     merged_products = resolve_product_conflicts(raw_products)
+
+    # Obliczenie statystyk dla wygenerowanego raportu (podział na 4 kategorie)
+    statystyki = {
+        "zalecane": sum(1 for p in merged_products.values() if p["status"] == "zalecane"),
+        "dozwolone": sum(1 for p in merged_products.values() if p["status"] == "dozwolone"),
+        "ograniczone": sum(1 for p in merged_products.values() if p["status"] == "ograniczone"),
+        "zakazane": sum(1 for p in merged_products.values() if p["status"] == "zakazane"),
+        "lacznie": len(merged_products)
+    }
 
     # 4. Generowanie pliku PDF z opisową, czytelną nazwą pliku (np. ograniczenia_zywieniowe_sibo_insulinoopornosc.pdf)
     os.makedirs(settings.PDF_OUTPUT_DIR, exist_ok=True)
@@ -122,7 +131,8 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         email=data.email,
         dolegliwosci_wybrane=selected_names,
         pdf_filename=user_download_name,
-        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{disk_filename}"
+        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{disk_filename}",
+        statystyki=statystyki
     )
 
 
