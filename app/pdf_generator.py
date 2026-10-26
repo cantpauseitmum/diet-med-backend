@@ -169,7 +169,7 @@ class NumberedCanvas(canvas.Canvas):
         # 2. Bieżąca stopka na każdej stronie
         page_str = f"Strona {self._pageNumber} z {page_count}"
         self.drawRightString(PAGE_WIDTH - MARGIN_RIGHT, 16, page_str)
-        self.drawString(MARGIN_LEFT, 16, "Diet-Med (TDP) — Zalecenia pomocnicze. W razie wątpliwości skonsultuj się ze specjalistą.")
+        self.drawString(MARGIN_LEFT, 16, "Diet-Med (TDP) — W razie wątpliwości skonsultuj się pod adresem poczta@diet-med.pl lub numerem telefonu +48 602 742 411.")
 
         # Linia nad stopką
         self.setStrokeColor(colors.HexColor("#e2e8f0"))
@@ -294,7 +294,108 @@ def generate_restrictions_pdf(
         f"<b>Wskazane dolegliwości:</b> {', '.join(selected_ailments) if selected_ailments else 'Ogólne wytyczne'}",
         subtitle_style
     ))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=14))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=12))
+
+    # Sekcja: Kategorie Produktów (objaśnienie 4 kategorii TDP)
+    h2_legend_title = ParagraphStyle(
+        "LegendTitle",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#1e3a8a"),
+        spaceAfter=3
+    )
+    legend_desc_intro = ParagraphStyle(
+        "LegendDescIntro",
+        parent=styles["Normal"],
+        fontName=FONT_NORMAL,
+        fontSize=8.5,
+        leading=11.5,
+        textColor=colors.HexColor("#475569"),
+        spaceAfter=6
+    )
+    legend_badge_zalecane = ParagraphStyle(
+        "LegendBadgeZalecane",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#065f46")
+    )
+    legend_badge_dozwolone = ParagraphStyle(
+        "LegendBadgeDozwolone",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#0284c7")
+    )
+    legend_badge_ograniczone = ParagraphStyle(
+        "LegendBadgeOgraniczone",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#b45309")
+    )
+    legend_badge_zakazane = ParagraphStyle(
+        "LegendBadgeZakazane",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#991b1b")
+    )
+    legend_item_desc = ParagraphStyle(
+        "LegendItemDesc",
+        parent=styles["Normal"],
+        fontName=FONT_NORMAL,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#1e293b")
+    )
+
+    story.append(Paragraph("Kategorie Produktów", h2_legend_title))
+    story.append(Paragraph(
+        "Każdy produkt w systemie TDP klasyfikowany jest do jednej z 4 kategorii wg aktualnych zaleceń klinicznych:",
+        legend_desc_intro
+    ))
+
+    legend_data = [
+        [
+            Paragraph("★ Zalecane", legend_badge_zalecane),
+            Paragraph("Szczególnie rekomendowane składniki o udowodnionym korzystnym wpływie", legend_item_desc)
+        ],
+        [
+            Paragraph("✓ Dozwolone", legend_badge_dozwolone),
+            Paragraph("Bezpieczne składniki w codziennej diecie", legend_item_desc)
+        ],
+        [
+            Paragraph("⚠️ Ograniczone", legend_badge_ograniczone),
+            Paragraph("Dopuszczalne w wyznaczonych porcjach gramaturowych", legend_item_desc)
+        ],
+        [
+            Paragraph("✕ Zakazane", legend_badge_zakazane),
+            Paragraph("Produkty przeciwwskazane, do bezwzględnego wyeliminowania", legend_item_desc)
+        ]
+    ]
+    t_legend = Table(legend_data, colWidths=[105, 418])
+    t_legend.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ecfdf5")),
+        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#f0f9ff")),
+        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#fffbeb")),
+        ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#fef2f2")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+    ]))
+    story.append(t_legend)
+    story.append(Spacer(1, 14))
 
     # Podział produktów wg 4 kategorii w wymaganej kolejności: zalecane, dozwolone, ograniczone, zakazane
     zalecane = []
@@ -411,74 +512,37 @@ def generate_restrictions_pdf(
             subtitle_style
         ))
 
-        col_widths = [151, 112, 260]
-
-        ogran_header_style = ParagraphStyle(
-            "OgraniczoneHeader",
-            parent=styles["Normal"],
-            fontName=FONT_BOLD,
-            fontSize=8.5,
-            leading=11,
-            textColor=colors.HexColor("#92400e")
-        )
-        ogran_prod_style = ParagraphStyle(
-            "OgraniczoneProd",
-            parent=styles["Normal"],
-            fontName=FONT_BOLD,
-            fontSize=8.5,
-            leading=11.5,
-            textColor=colors.HexColor("#1e293b")
-        )
-        ogran_portion_style = ParagraphStyle(
-            "OgraniczonePortion",
-            parent=styles["Normal"],
-            fontName=FONT_NORMAL,
-            fontSize=8.5,
-            leading=11,
-            textColor=colors.HexColor("#1e293b")
-        )
-        ogran_comm_style = ParagraphStyle(
-            "OgraniczoneComm",
-            parent=styles["Normal"],
-            fontName=FONT_NORMAL,
-            fontSize=8.0,
-            leading=10.5,
-            textColor=colors.HexColor("#1e293b")
-        )
-
-        table_data = [[
-            Paragraph("Produkt / Rodzaj", ogran_header_style),
-            Paragraph("Dopuszczalna porcja", ogran_header_style),
-            Paragraph("Uwagi i komentarz", ogran_header_style)
-        ]]
-
+        cols_count = 3
+        col_widths = [173, 173, 174]
+        table_data = []
+        row = []
         for p in ograniczone:
+            text_p = p['rodzaj']
+            details = []
             if p.get("ilosc") is not None:
-                qty_str = f"{float(p['ilosc']):g}"
-                unit_str = p.get("jednostka") or ""
-                porcja_str = f"{qty_str}{unit_str}"
-            else:
-                porcja_str = "w niewielkich ilościach"
+                qty_s = f"{float(p['ilosc']):g}"
+                u_s = p.get('jednostka') or ''
+                details.append(f"{qty_s}{u_s}")
+            if p.get("komentarze"):
+                details.append(", ".join(p["komentarze"]))
+            if details:
+                text_p += f' <font color="#b45309"><i>({" - ".join(details)})</i></font>'
+            row.append(Paragraph(text_p, cell_style))
+            if len(row) == cols_count:
+                table_data.append(row)
+                row = []
+        if row:
+            while len(row) < cols_count:
+                row.append(Paragraph("", cell_style))
+            table_data.append(row)
 
-            comm_str = " / ".join(p["komentarze"]) if p.get("komentarze") else "—"
-            table_data.append([
-                Paragraph(p["rodzaj"], ogran_prod_style),
-                Paragraph(porcja_str, ogran_portion_style),
-                Paragraph(comm_str, ogran_comm_style)
-            ])
-
-        t_ograniczone = Table(table_data, colWidths=col_widths, repeatRows=1)
+        t_ograniczone = Table(table_data, colWidths=col_widths)
         t_ograniczone.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#92400e")),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#fde68a")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffbeb")]),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#fffbeb"), colors.white]),
         ]))
         story.append(t_ograniczone)
         story.append(Spacer(1, 14))
@@ -493,8 +557,8 @@ def generate_restrictions_pdf(
             subtitle_style
         ))
 
-        cols_count = 2
-        col_widths = [261, 262]
+        cols_count = 3
+        col_widths = [173, 173, 174]
         table_data = []
         row = []
         for p in zakazane:
@@ -537,7 +601,7 @@ def generate_restrictions_pdf(
     story.append(Paragraph(
         "Dokument wygenerowany automatycznie w ramach systemu Diet-Med (TDP). "
         "Przedstawione zalecenia mają charakter pomocniczy. "
-        "W razie wątpliwości skonsultuj się ze specjalistą dietetykiem lub lekarzem prowadzącym.",
+        "W razie wątpliwości skonsultuj się pod adresem poczta@diet-med.pl lub numerem telefonu +48 602 742 411.",
         footer_style
     ))
 

@@ -98,12 +98,10 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         if clean and clean not in slug_parts:
             slug_parts.append(clean)
 
-    slug_str = "_".join(slug_parts)
+    user_download_name = "Ograniczenia-Zywieniowe.pdf"
     if slug_str:
-        user_download_name = f"ograniczenia_zywieniowe_{slug_str}.pdf"
         disk_filename = f"ograniczenia_zywieniowe_{slug_str}_{uuid.uuid4().hex[:6]}.pdf"
     else:
-        user_download_name = "ograniczenia_zywieniowe.pdf"
         disk_filename = f"ograniczenia_zywieniowe_{uuid.uuid4().hex[:8]}.pdf"
 
     pdf_full_path = os.path.join(settings.PDF_OUTPUT_DIR, disk_filename)
@@ -139,8 +137,8 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
 @router.get("/pobierz-pdf/{filename}")
 def download_pdf(filename: str):
     """
-    Udostępnia wygenerowany plik PDF do bezpośredniego pobrania z czytelną,
-    opisową nazwą pliku odpowiadającą badanym jednostkom chorobowym.
+    Udostępnia wygenerowany plik PDF do bezpośredniego pobrania ze stałą,
+    oficjalną nazwą pliku: 'Ograniczenia-Zywieniowe.pdf'.
     """
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(settings.PDF_OUTPUT_DIR, safe_filename)
@@ -148,13 +146,8 @@ def download_pdf(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Plik PDF nie został znaleziony.")
 
-    # Czytelna nazwa dla pobieranego pliku (usunięcie surowego identyfikatora UUID)
-    user_friendly_name = re.sub(r'_[0-9a-f]{6,8}\.pdf$', '.pdf', safe_filename)
-    if not user_friendly_name.endswith('.pdf'):
-        user_friendly_name += '.pdf'
-
     return FileResponse(
         file_path,
         media_type="application/pdf",
-        filename=user_friendly_name
+        filename="Ograniczenia-Zywieniowe.pdf"
     )
