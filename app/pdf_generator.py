@@ -50,12 +50,15 @@ def merge_comments(existing_comments: list[str], new_comment: str | None) -> lis
 def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
     """
     Logika łączenia produktów z wielu dolegliwości:
-    - Priorytet: 'zakazane' > 'ograniczone' > 'dozwolone' > 'zalecane'
-    - Gdy 'ograniczone' / 'dozwolone' / 'zalecane':
-      - zachowujemy ilość i jednostkę
-      - jeśli dolegliwości mają ten sam status i oba mają ilość -> bierzemy mniejszą ilość
-    - ZAWSZE łączymy unikalne komentarze ze wszystkich wybranych dolegliwości (bez powtórzeń) dla produktów innych niż 'zakazane'.
-    - W produktach 'zakazane' komentarze i porcje nie występują.
+    - Priorytet klasyfikacji: 'zakazane' (4) > 'ograniczone' (3) > 'dozwolone' (2) > 'zalecane' (1)
+    - Gdy następuje zmiana klasyfikacji (new_score > existing_score):
+      - poprzednie gramatury i komentarze są całkowicie wyczyszczone,
+      - produkt przyjmuje wyłącznie gramaturę i komentarz ze statusu nadrzędnego.
+    - Gdy nowy rekord ma niższy priorytet (new_score < existing_score):
+      - jest całkowicie ignorowany (brak wycieku cech z niższego statusu do wyższego).
+    - Gdy produkt zachowuje tę samą klasyfikację (new_score == existing_score):
+      - gramatura: wybierana jest mniejsza ilość min(ilość_1, ilość_2)
+      - komentarze: unikalne uwagi ze wszystkich dolegliwości o tym samym statusie są łączone bez powtórzeń.
     """
     merged = {}
     STATUS_PRIORITY = {
@@ -82,47 +85,41 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
                 "status": curr_status,
                 "ilosc": qty if curr_status != "zakazane" else None,
                 "jednostka": unit if curr_status != "zakazane" else None,
-                "komentarze": [comm] if (curr_status != "zakazane" and comm) else []
+                "komentarze": [comm] if comm else []
             }
         else:
             existing = merged[key]
             existing_score = STATUS_PRIORITY.get(existing["status"], 0)
             new_score = STATUS_PRIORITY.get(curr_status, 0)
 
-            # Wyższy priorytet zastępuje niższy w kwestii statusu (zakazane > ograniczone > dozwolone > zalecane)
+            # 1. Wyższy priorytet zastępuje niższy -> zmiana klasyfikacji czyści stare cechy
             if new_score > existing_score:
                 existing["status"] = curr_status
-                if curr_status == "zakazane":
-                    existing["ilosc"] = None
-                    existing["jednostka"] = None
-                    existing["komentarze"] = []
-                else:
-                    if qty is not None:
-                        existing["ilosc"] = qty
-                    if unit:
-                        existing["jednostka"] = unit
-                    if comm:
-                        existing["komentarze"] = merge_comments(existing["komentarze"], comm)
+                existing["ilosc"] = qty if curr_status != "zakazane" else None
+                existing["jednostka"] = unit if curr_status != "zakazane" else None
+                existing["komentarze"] = [comm] if comm else []
+
+            # 2. Ten sam status -> brak zmiany klasyfikacji, łączenie cech w ramach tej samej grupy
             elif new_score == existing_score:
                 if curr_status != "zakazane":
                     old_qty = existing.get("ilosc")
                     if qty is not None and old_qty is not None:
-                        if float(qty) < float(old_qty):
-                            existing["ilosc"] = qty
-                            existing["jednostka"] = unit or existing.get("jednostka")
+                        try:
+                            if float(qty) < float(old_qty):
+                                existing["ilosc"] = qty
+                                existing["jednostka"] = unit or existing.get("jednostka")
+                        except (ValueError, TypeError):
+                            pass
                     elif qty is not None and old_qty is None:
                         existing["ilosc"] = qty
                         existing["jednostka"] = unit
-                    if comm:
-                        existing["komentarze"] = merge_comments(existing["komentarze"], comm)
+
+                if comm:
+                    existing["komentarze"] = merge_comments(existing["komentarze"], comm)
+
+            # 3. Niższy priorytet niż istniejący -> ignorujemy dane z niższego statusu
             else:
-                # new_score < existing_score: zachowujemy status wyższego priorytetu
-                if existing["status"] != "zakazane":
-                    if existing["ilosc"] is None and qty is not None:
-                        existing["ilosc"] = qty
-                        existing["jednostka"] = unit
-                    if comm:
-                        existing["komentarze"] = merge_comments(existing["komentarze"], comm)
+                pass
 
     return merged
 
@@ -502,6 +499,9 @@ def generate_restrictions_pdf(
         row = []
         for p in zakazane:
             text_p = p['rodzaj']
+            if p.get("komentarze"):
+                comm_joined = ", ".join(p["komentarze"])
+                text_p += f' <font color="#991b1b"><i>({comm_joined})</i></font>'
             row.append(Paragraph(text_p, cell_style))
             if len(row) == cols_count:
                 table_data.append(row)

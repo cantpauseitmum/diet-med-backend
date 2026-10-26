@@ -167,8 +167,6 @@ def sync_product_tables(conn):
 
     # Usunięcie starych tabel z bazy, które nie mają już odpowiednika w aktualnych plikach seedów
     try:
-        conn.execute(text("DROP TABLE IF EXISTS sibo_produkty CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS hashimoto_produkty CASCADE;"))
         existing_db_tables = conn.execute(text("""
             SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE '%_produkty'
         """)).fetchall()

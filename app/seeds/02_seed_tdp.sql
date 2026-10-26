@@ -1,6 +1,7 @@
 -- =========================================================
 -- Wypełnienie tabeli dolegliwości (TDP)
 -- =========================================================
+TRUNCATE TABLE dolegliwosci RESTART IDENTITY CASCADE;
 INSERT INTO dolegliwosci (kod) VALUES
 ('hashimoto'),
 ('insulinooporność'),
