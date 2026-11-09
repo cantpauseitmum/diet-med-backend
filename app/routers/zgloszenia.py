@@ -98,6 +98,7 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         if clean and clean not in slug_parts:
             slug_parts.append(clean)
 
+    slug_str = "_".join(slug_parts)
     user_download_name = "Ograniczenia-Zywieniowe.pdf"
     if slug_str:
         disk_filename = f"ograniczenia_zywieniowe_{slug_str}_{uuid.uuid4().hex[:6]}.pdf"
