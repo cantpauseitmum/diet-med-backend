@@ -6,3 +6,7 @@ __pycache__/
 generated_pdfs/*.pdf
 !generated_pdfs/.gitkeep
 .DS_Store
+
+# Dokumenty wewnętrzne i wyceny
+WYCENA_PROJEKTU.md
+wycena*.md
