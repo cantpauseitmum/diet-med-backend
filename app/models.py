@@ -16,5 +16,6 @@ class Zgloszenie(Base):
     email = Column(String(255), nullable=True, index=True)
     dolegliwosci_ids = Column(ARRAY(Integer), nullable=False)
     pdf_path = Column(String(255), nullable=True)
+    xlsx_path = Column(String(255), nullable=True)
     status = Column(String(50), default="wygenerowano")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

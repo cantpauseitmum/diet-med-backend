@@ -11,6 +11,7 @@ from app.config import settings
 from app.models import Dolegliwosc, Zgloszenie
 from app.schemas import ZgloszenieCreate, ZgloszenieResponse
 from app.pdf_generator import resolve_product_conflicts, generate_restrictions_pdf
+from app.xlsx_generator import generate_restrictions_xlsx
 import re
 from app.routers.dolegliwosci import find_ailment_table, PL_TO_ASCII
 
@@ -42,7 +43,10 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         table_name = find_ailment_table(ailment.kod, existing_tables)
         if table_name:
             try:
-                sql_fetch = text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {table_name}")
+                col_names = set(c["name"].lower() for c in inspect(db.get_bind()).get_columns(table_name))
+                has_kat = "kategoria" in col_names
+                select_cols = "rodzaj, status, ilosc, jednostka, komentarz, kategoria" if has_kat else "rodzaj, status, ilosc, jednostka, komentarz"
+                sql_fetch = text(f"SELECT {select_cols} FROM {table_name}")
                 rows = db.execute(sql_fetch).fetchall()
                 for r in rows:
                     raw_products.append({
@@ -51,6 +55,7 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                         "ilosc": r[2],
                         "jednostka": r[3],
                         "komentarz": r[4],
+                        "kategoria": r[5] if has_kat else "Inne",
                         "dolegliwosc": ailment.kod
                     })
                 logger.info(f"Pobrano {len(rows)} produktów z tabeli '{table_name}' dla dolegliwości '{ailment.kod}'.")
@@ -64,7 +69,10 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
     if not raw_products and selected_records:
         fallback_table = next((t for t in sorted(existing_tables) if t.endswith("_produkty")), None)
         if fallback_table:
-            rows = db.execute(text(f"SELECT rodzaj, status, ilosc, jednostka, komentarz FROM {fallback_table}")).fetchall()
+            col_names = set(c["name"].lower() for c in inspect(db.get_bind()).get_columns(fallback_table))
+            has_kat = "kategoria" in col_names
+            select_cols = "rodzaj, status, ilosc, jednostka, komentarz, kategoria" if has_kat else "rodzaj, status, ilosc, jednostka, komentarz"
+            rows = db.execute(text(f"SELECT {select_cols} FROM {fallback_table}")).fetchall()
             for r in rows:
                 raw_products.append({
                     "rodzaj": r[0],
@@ -72,6 +80,7 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
                     "ilosc": r[2],
                     "jednostka": r[3],
                     "komentarz": r[4],
+                    "kategoria": r[5] if has_kat else "Inne",
                     "dolegliwosc": "Ogólne wytyczne"
                 })
 
@@ -88,7 +97,7 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         "lacznie": len(merged_products)
     }
 
-    # 4. Generowanie pliku PDF z opisową, czytelną nazwą pliku (np. ograniczenia_zywieniowe_sibo_insulinoopornosc.pdf)
+    # 4. Generowanie plików PDF oraz XLSX z czytelnymi nazwami plików
     os.makedirs(settings.PDF_OUTPUT_DIR, exist_ok=True)
 
     slug_parts = []
@@ -99,13 +108,17 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
             slug_parts.append(clean)
 
     slug_str = "_".join(slug_parts)
-    user_download_name = "Ograniczenia-Zywieniowe.pdf"
+    user_download_name_pdf = "Ograniczenia-Zywieniowe.pdf"
+    user_download_name_xlsx = "Ograniczenia-Zywieniowe.xlsx"
     if slug_str:
-        disk_filename = f"ograniczenia_zywieniowe_{slug_str}_{uuid.uuid4().hex[:6]}.pdf"
+        disk_filename_pdf = f"ograniczenia_zywieniowe_{slug_str}_{uuid.uuid4().hex[:6]}.pdf"
+        disk_filename_xlsx = f"ograniczenia_zywieniowe_{slug_str}_{uuid.uuid4().hex[:6]}.xlsx"
     else:
-        disk_filename = f"ograniczenia_zywieniowe_{uuid.uuid4().hex[:8]}.pdf"
+        disk_filename_pdf = f"ograniczenia_zywieniowe_{uuid.uuid4().hex[:8]}.pdf"
+        disk_filename_xlsx = f"ograniczenia_zywieniowe_{uuid.uuid4().hex[:8]}.xlsx"
 
-    pdf_full_path = os.path.join(settings.PDF_OUTPUT_DIR, disk_filename)
+    pdf_full_path = os.path.join(settings.PDF_OUTPUT_DIR, disk_filename_pdf)
+    xlsx_full_path = os.path.join(settings.PDF_OUTPUT_DIR, disk_filename_xlsx)
 
     generate_restrictions_pdf(
         email=data.email,
@@ -114,11 +127,19 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
         output_filepath=pdf_full_path
     )
 
+    generate_restrictions_xlsx(
+        email=data.email,
+        selected_ailments=selected_names,
+        merged_products=merged_products,
+        output_filepath=xlsx_full_path
+    )
+
     # 5. Rejestracja w bazie danych (tabela zgloszenia)
     new_sub = Zgloszenie(
         email=data.email,
         dolegliwosci_ids=data.dolegliwosci,
-        pdf_path=disk_filename,
+        pdf_path=disk_filename_pdf,
+        xlsx_path=disk_filename_xlsx,
         status="wygenerowano"
     )
     db.add(new_sub)
@@ -126,11 +147,13 @@ def submit_form(data: ZgloszenieCreate, db: Session = Depends(get_db)):
 
     return ZgloszenieResponse(
         status="success",
-        message="Plik PDF z ograniczeniami żywieniowymi został pomyślnie przygotowany.",
+        message="Raport z ograniczeniami żywieniowymi (PDF oraz XLSX) został pomyślnie przygotowany.",
         email=data.email,
         dolegliwosci_wybrane=selected_names,
-        pdf_filename=user_download_name,
-        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{disk_filename}",
+        pdf_filename=user_download_name_pdf,
+        pdf_download_url=f"/api/zgloszenia/pobierz-pdf/{disk_filename_pdf}",
+        xlsx_filename=user_download_name_xlsx,
+        xlsx_download_url=f"/api/zgloszenia/pobierz-xlsx/{disk_filename_xlsx}",
         statystyki=statystyki
     )
 
@@ -151,4 +174,23 @@ def download_pdf(filename: str):
         file_path,
         media_type="application/pdf",
         filename="Ograniczenia-Zywieniowe.pdf"
+    )
+
+
+@router.get("/pobierz-xlsx/{filename}")
+def download_xlsx(filename: str):
+    """
+    Udostępnia wygenerowany plik XLSX (arkusz kalkulacyjny Excel) do bezpośredniego pobrania ze stałą,
+    oficjalną nazwą pliku: 'Ograniczenia-Zywieniowe.xlsx'.
+    """
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(settings.PDF_OUTPUT_DIR, safe_filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Plik XLSX nie został znaleziony.")
+
+    return FileResponse(
+        file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="Ograniczenia-Zywieniowe.xlsx"
     )

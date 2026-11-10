@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS insulinoopornosc_produkty (
     status VARCHAR(20) NOT NULL CHECK (status IN ('zalecane', 'dozwolone', 'ograniczone', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
-    komentarz TEXT NULL
+    komentarz TEXT NULL,
+    kategoria VARCHAR(100) NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_insulinoopornosc_produkty_rodzaj ON insulinoopornosc_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_insulinoopornosc_produkty_status ON insulinoopornosc_produkty(status);
+CREATE INDEX IF NOT EXISTS idx_insulinoopornosc_produkty_kategoria ON insulinoopornosc_produkty(kategoria);
 
 -- 3. Tabela produktów dla Niedoczynność tarczycy
 DROP TABLE IF EXISTS niedoczynnosc_tarczycy_produkty CASCADE;
@@ -30,10 +32,12 @@ CREATE TABLE IF NOT EXISTS niedoczynnosc_tarczycy_produkty (
     status VARCHAR(20) NOT NULL CHECK (status IN ('zalecane', 'dozwolone', 'ograniczone', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
-    komentarz TEXT NULL
+    komentarz TEXT NULL,
+    kategoria VARCHAR(100) NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_niedoczynnosc_tarczycy_produkty_rodzaj ON niedoczynnosc_tarczycy_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_niedoczynnosc_tarczycy_produkty_status ON niedoczynnosc_tarczycy_produkty(status);
+CREATE INDEX IF NOT EXISTS idx_niedoczynnosc_tarczycy_produkty_kategoria ON niedoczynnosc_tarczycy_produkty(kategoria);
 
 -- 4. Tabela produktów dla SIBO
 DROP TABLE IF EXISTS sibo_produkty CASCADE;
@@ -43,10 +47,12 @@ CREATE TABLE IF NOT EXISTS sibo_produkty (
     status VARCHAR(20) NOT NULL CHECK (status IN ('zalecane', 'dozwolone', 'ograniczone', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
-    komentarz TEXT NULL
+    komentarz TEXT NULL,
+    kategoria VARCHAR(100) NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sibo_produkty_rodzaj ON sibo_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_sibo_produkty_status ON sibo_produkty(status);
+CREATE INDEX IF NOT EXISTS idx_sibo_produkty_kategoria ON sibo_produkty(kategoria);
 
 -- 5. Tabela produktów dla Hashimoto
 DROP TABLE IF EXISTS hashimoto_produkty CASCADE;
@@ -56,10 +62,12 @@ CREATE TABLE IF NOT EXISTS hashimoto_produkty (
     status VARCHAR(20) NOT NULL CHECK (status IN ('zalecane', 'dozwolone', 'ograniczone', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
-    komentarz TEXT NULL
+    komentarz TEXT NULL,
+    kategoria VARCHAR(100) NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hashimoto_produkty_rodzaj ON hashimoto_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_hashimoto_produkty_status ON hashimoto_produkty(status);
+CREATE INDEX IF NOT EXISTS idx_hashimoto_produkty_kategoria ON hashimoto_produkty(kategoria);
 
 -- 6. Tabela produktów dla Nietolerancja histaminy
 DROP TABLE IF EXISTS nietolerancja_histaminy_produkty CASCADE;
@@ -69,10 +77,12 @@ CREATE TABLE IF NOT EXISTS nietolerancja_histaminy_produkty (
     status VARCHAR(20) NOT NULL CHECK (status IN ('zalecane', 'dozwolone', 'ograniczone', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
-    komentarz TEXT NULL
+    komentarz TEXT NULL,
+    kategoria VARCHAR(100) NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_nietolerancja_histaminy_produkty_rodzaj ON nietolerancja_histaminy_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_nietolerancja_histaminy_produkty_status ON nietolerancja_histaminy_produkty(status);
+CREATE INDEX IF NOT EXISTS idx_nietolerancja_histaminy_produkty_kategoria ON nietolerancja_histaminy_produkty(kategoria);
 
 -- 7. Tabela produktów dla Lipoedema
 DROP TABLE IF EXISTS lipoedema_produkty CASCADE;
@@ -82,10 +92,12 @@ CREATE TABLE IF NOT EXISTS lipoedema_produkty (
     status VARCHAR(20) NOT NULL CHECK (status IN ('zalecane', 'dozwolone', 'ograniczone', 'zakazane')),
     ilosc NUMERIC(10, 2) NULL,
     jednostka VARCHAR(50) NULL,
-    komentarz TEXT NULL
+    komentarz TEXT NULL,
+    kategoria VARCHAR(100) NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_lipoedema_produkty_rodzaj ON lipoedema_produkty(rodzaj);
 CREATE INDEX IF NOT EXISTS idx_lipoedema_produkty_status ON lipoedema_produkty(status);
+CREATE INDEX IF NOT EXISTS idx_lipoedema_produkty_kategoria ON lipoedema_produkty(kategoria);
 
 -- Tabela zgłoszeń z formularza pacjentów
 DROP TABLE IF EXISTS zgloszenia CASCADE;
@@ -94,6 +106,7 @@ CREATE TABLE IF NOT EXISTS zgloszenia (
     email VARCHAR(255) NULL,
     dolegliwosci_ids INTEGER[] NOT NULL,
     pdf_path VARCHAR(255) NULL,
+    xlsx_path VARCHAR(255) NULL,
     status VARCHAR(50) DEFAULT 'wygenerowano',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

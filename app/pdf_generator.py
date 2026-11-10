@@ -26,6 +26,37 @@ if os.path.exists(BOLD_FONT_PATH):
 else:
     FONT_BOLD = "Helvetica-Bold"
 
+POLISH_COLLATE_MAP = {
+    'a': 'a0', 'ą': 'a1', 'b': 'b0', 'c': 'c0', 'ć': 'c1', 'd': 'd0',
+    'e': 'e0', 'ę': 'e1', 'f': 'f0', 'g': 'g0', 'h': 'h0', 'i': 'i0',
+    'j': 'j0', 'k': 'k0', 'l': 'l0', 'ł': 'l1', 'm': 'm0', 'n': 'n0',
+    'ń': 'n1', 'o': 'o0', 'ó': 'o1', 'p': 'p0', 'r': 'r0', 's': 's0',
+    'ś': 's1', 't': 't0', 'u': 'u0', 'w': 'w0', 'y': 'y0', 'z': 'z0',
+    'ź': 'z1', 'ż': 'z2'
+}
+
+def polish_sort_key(text: str) -> str:
+    """Klucz sortowania alfabetycznego uwzględniający polskie znaki diakrytyczne."""
+    return "".join(POLISH_COLLATE_MAP.get(ch, ch) for ch in (text or "").lower())
+
+CANONICAL_CATEGORIES = [
+    "Pieczywo",
+    "Zboża/pseudozboża i produkty",
+    "Nabiał i produkty nabiałowe oraz roślinne",
+    "Mięso",
+    "Wędliny i wyroby",
+    "Ryby",
+    "Owoce morza",
+    "Owoce",
+    "Warzywa",
+    "Inne produkty roślinne",
+    "Nasiona i orzechy",
+    "Napoje",
+    "Przyprawy",
+    "Inne",
+    "Dodatki do żywności"
+]
+
 
 def merge_comments(existing_comments: list[str], new_comment: str | None) -> list[str]:
     if not new_comment:
@@ -78,6 +109,7 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
         unit = item.get("jednostka")
         raw_comm = item.get("komentarz")
         comm = raw_comm.strip() if (isinstance(raw_comm, str) and raw_comm.strip()) else None
+        kategoria = item.get("kategoria") or "Inne"
 
         if key not in merged:
             merged[key] = {
@@ -85,10 +117,13 @@ def resolve_product_conflicts(products_by_ailment: list[dict]) -> dict:
                 "status": curr_status,
                 "ilosc": qty if curr_status != "zakazane" else None,
                 "jednostka": unit if curr_status != "zakazane" else None,
-                "komentarze": [comm] if comm else []
+                "komentarze": [comm] if comm else [],
+                "kategoria": kategoria
             }
         else:
             existing = merged[key]
+            if not existing.get("kategoria") and kategoria:
+                existing["kategoria"] = kategoria
             existing_score = STATUS_PRIORITY.get(existing["status"], 0)
             new_score = STATUS_PRIORITY.get(curr_status, 0)
 
@@ -177,6 +212,86 @@ class NumberedCanvas(canvas.Canvas):
         self.line(MARGIN_LEFT, 26, PAGE_WIDTH - MARGIN_RIGHT, 26)
 
         self.restoreState()
+
+
+def add_status_category_tables(
+    story,
+    products_list: list[dict],
+    styles,
+    col_widths: list[float],
+    cell_style,
+    zebra_bg: colors.Color,
+    accent_color: str,
+    status_type: str
+):
+    """
+    Dzieli produkty z danego statusu na podsekcje (kategorie),
+    sortuje alfabetycznie (A-Z) w obrębie podkategorii i dodaje tabele do story.
+    """
+    category_buckets: dict[str, list] = {}
+    for item in products_list:
+        cat = item.get("kategoria") or "Inne"
+        cat_clean = cat.strip().capitalize()
+        category_buckets.setdefault(cat_clean, []).append(item)
+
+    known_order_map = {cat.lower(): idx for idx, cat in enumerate(CANONICAL_CATEGORIES)}
+    sorted_categories = sorted(
+        category_buckets.keys(),
+        key=lambda c: (known_order_map.get(c.lower(), 99), polish_sort_key(c))
+    )
+
+    cat_title_style = ParagraphStyle(
+        f"CatHeading_{status_type}",
+        parent=styles["Normal"],
+        fontName=FONT_BOLD,
+        fontSize=9.5,
+        leading=13,
+        textColor=colors.HexColor(accent_color),
+        spaceBefore=7,
+        spaceAfter=3,
+        keepWithNext=True
+    )
+
+    cols_count = len(col_widths)
+
+    for cat_name in sorted_categories:
+        items = category_buckets[cat_name]
+        items.sort(key=lambda x: polish_sort_key(x["rodzaj"]))
+
+        story.append(Paragraph(f"<b>■ {cat_name}</b> <font size='7.5' color='#64748b'>({len(items)})</font>", cat_title_style))
+
+        table_data = []
+        row = []
+        for p in items:
+            text_p = p['rodzaj']
+            details = []
+            if status_type != "zakazane" and p.get("ilosc") is not None:
+                qty_s = f"{float(p['ilosc']):g}"
+                u_s = p.get('jednostka') or ''
+                details.append(f"{qty_s}{u_s}")
+            if p.get("komentarze"):
+                details.append(", ".join(p["komentarze"]))
+            if details:
+                text_p += f' <font color="{accent_color}"><i>({" - ".join(details)})</i></font>'
+            row.append(Paragraph(text_p, cell_style))
+            if len(row) == cols_count:
+                table_data.append(row)
+                row = []
+        if row:
+            while len(row) < cols_count:
+                row.append(Paragraph("", cell_style))
+            table_data.append(row)
+
+        t = Table(table_data, colWidths=col_widths)
+        t.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [zebra_bg, colors.white]),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 4))
 
 
 def generate_restrictions_pdf(
@@ -421,41 +536,17 @@ def generate_restrictions_pdf(
             "Produkty o udowodnionym korzystnym wpływie przy wskazanych dolegliwościach (najwyższa rekomendacja):",
             subtitle_style
         ))
-
-        cols_count = 3
-        col_widths = [173, 173, 174]
-        table_data = []
-        row = []
-        for p in zalecane:
-            text_p = p['rodzaj']
-            details = []
-            if p.get("ilosc") is not None:
-                qty_s = f"{float(p['ilosc']):g}"
-                u_s = p.get('jednostka') or ''
-                details.append(f"{qty_s}{u_s}")
-            if p.get("komentarze"):
-                details.append(", ".join(p["komentarze"]))
-            if details:
-                text_p += f' <font color="#047857"><i>({" - ".join(details)})</i></font>'
-            row.append(Paragraph(text_p, cell_style))
-            if len(row) == cols_count:
-                table_data.append(row)
-                row = []
-        if row:
-            while len(row) < cols_count:
-                row.append(Paragraph("", cell_style))
-            table_data.append(row)
-
-        t_zalecane = Table(table_data, colWidths=col_widths)
-        t_zalecane.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#ecfdf5"), colors.white]),
-        ]))
-        story.append(t_zalecane)
-        story.append(Spacer(1, 14))
+        add_status_category_tables(
+            story=story,
+            products_list=zalecane,
+            styles=styles,
+            col_widths=[173, 173, 174],
+            cell_style=cell_style,
+            zebra_bg=colors.HexColor("#ecfdf5"),
+            accent_color="#047857",
+            status_type="zalecane"
+        )
+        story.append(Spacer(1, 10))
 
     # 2. SEKCJA: PRODUKTY DOZWOLONE
     if dozwolone:
@@ -466,41 +557,17 @@ def generate_restrictions_pdf(
             "Produkty bezpieczne w codziennej diecie, niepowodujące zaostrzenia objawów:",
             subtitle_style
         ))
-
-        cols_count = 3
-        col_widths = [173, 173, 174]
-        table_data = []
-        row = []
-        for p in dozwolone:
-            text_p = p['rodzaj']
-            details = []
-            if p.get("ilosc") is not None:
-                qty_s = f"{float(p['ilosc']):g}"
-                u_s = p.get('jednostka') or ''
-                details.append(f"{qty_s}{u_s}")
-            if p.get("komentarze"):
-                details.append(", ".join(p["komentarze"]))
-            if details:
-                text_p += f' <font color="#0284c7"><i>({" - ".join(details)})</i></font>'
-            row.append(Paragraph(text_p, cell_style))
-            if len(row) == cols_count:
-                table_data.append(row)
-                row = []
-        if row:
-            while len(row) < cols_count:
-                row.append(Paragraph("", cell_style))
-            table_data.append(row)
-
-        t_dozwolone = Table(table_data, colWidths=col_widths)
-        t_dozwolone.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f0f9ff"), colors.white]),
-        ]))
-        story.append(t_dozwolone)
-        story.append(Spacer(1, 14))
+        add_status_category_tables(
+            story=story,
+            products_list=dozwolone,
+            styles=styles,
+            col_widths=[173, 173, 174],
+            cell_style=cell_style,
+            zebra_bg=colors.HexColor("#f0f9ff"),
+            accent_color="#0284c7",
+            status_type="dozwolone"
+        )
+        story.append(Spacer(1, 10))
 
     # 3. SEKCJA: PRODUKTY OGRANICZONE
     if ograniczone:
@@ -511,41 +578,17 @@ def generate_restrictions_pdf(
             "Poniższe produkty można spożywać wyłącznie z uwzględnieniem wskazanej gramatury/ilości oraz uwag dodatkowych:",
             subtitle_style
         ))
-
-        cols_count = 3
-        col_widths = [173, 173, 174]
-        table_data = []
-        row = []
-        for p in ograniczone:
-            text_p = p['rodzaj']
-            details = []
-            if p.get("ilosc") is not None:
-                qty_s = f"{float(p['ilosc']):g}"
-                u_s = p.get('jednostka') or ''
-                details.append(f"{qty_s}{u_s}")
-            if p.get("komentarze"):
-                details.append(", ".join(p["komentarze"]))
-            if details:
-                text_p += f' <font color="#b45309"><i>({" - ".join(details)})</i></font>'
-            row.append(Paragraph(text_p, cell_style))
-            if len(row) == cols_count:
-                table_data.append(row)
-                row = []
-        if row:
-            while len(row) < cols_count:
-                row.append(Paragraph("", cell_style))
-            table_data.append(row)
-
-        t_ograniczone = Table(table_data, colWidths=col_widths)
-        t_ograniczone.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#fffbeb"), colors.white]),
-        ]))
-        story.append(t_ograniczone)
-        story.append(Spacer(1, 14))
+        add_status_category_tables(
+            story=story,
+            products_list=ograniczone,
+            styles=styles,
+            col_widths=[173, 173, 174],
+            cell_style=cell_style,
+            zebra_bg=colors.HexColor("#fffbeb"),
+            accent_color="#b45309",
+            status_type="ograniczone"
+        )
+        story.append(Spacer(1, 10))
 
     # 4. SEKCJA: PRODUKTY ZAKAZANE
     if zakazane:
@@ -556,35 +599,17 @@ def generate_restrictions_pdf(
             "Tych produktów należy bezwzględnie unikać przy wskazanych dolegliwościach:",
             subtitle_style
         ))
-
-        cols_count = 3
-        col_widths = [173, 173, 174]
-        table_data = []
-        row = []
-        for p in zakazane:
-            text_p = p['rodzaj']
-            if p.get("komentarze"):
-                comm_joined = ", ".join(p["komentarze"])
-                text_p += f' <font color="#991b1b"><i>({comm_joined})</i></font>'
-            row.append(Paragraph(text_p, cell_style))
-            if len(row) == cols_count:
-                table_data.append(row)
-                row = []
-        if row:
-            while len(row) < cols_count:
-                row.append(Paragraph("", cell_style))
-            table_data.append(row)
-
-        t_zakazane = Table(table_data, colWidths=col_widths)
-        t_zakazane.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#fef2f2"), colors.white]),
-        ]))
-        story.append(t_zakazane)
-        story.append(Spacer(1, 14))
+        add_status_category_tables(
+            story=story,
+            products_list=zakazane,
+            styles=styles,
+            col_widths=[173, 173, 174],
+            cell_style=cell_style,
+            zebra_bg=colors.HexColor("#fef2f2"),
+            accent_color="#991b1b",
+            status_type="zakazane"
+        )
+        story.append(Spacer(1, 10))
 
     # Stopka
     story.append(Spacer(1, 15))

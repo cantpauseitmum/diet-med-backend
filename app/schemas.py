@@ -25,6 +25,8 @@ class ZgloszenieResponse(BaseModel):
     dolegliwosci_wybrane: List[str]
     pdf_filename: str
     pdf_download_url: str
+    xlsx_filename: Optional[str] = None
+    xlsx_download_url: Optional[str] = None
     email: Optional[str] = None
     statystyki: Optional[dict] = None
 
@@ -35,6 +37,7 @@ class ProduktBaseOut(BaseModel):
     ilosc: Optional[float] = None
     jednostka: Optional[str] = None
     komentarz: Optional[str] = None
+    kategoria: Optional[str] = None
 
     class Config:
         from_attributes = True

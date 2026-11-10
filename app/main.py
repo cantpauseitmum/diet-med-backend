@@ -45,6 +45,11 @@ async def lifespan(app: FastAPI):
                         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'status') THEN
                             ALTER TABLE zgloszenia ADD COLUMN status VARCHAR(50) DEFAULT 'wygenerowano';
                         END IF;
+
+                        -- 4. Upewnij się, że kolumna xlsx_path istnieje
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zgloszenia' AND column_name = 'xlsx_path') THEN
+                            ALTER TABLE zgloszenia ADD COLUMN xlsx_path VARCHAR(255) NULL;
+                        END IF;
                     END IF;
                 END $$;
             """))
