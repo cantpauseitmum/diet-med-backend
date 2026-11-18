@@ -203,8 +203,8 @@ class NumberedCanvas(canvas.Canvas):
 
         # 2. Bieżąca stopka na każdej stronie
         page_str = f"Strona {self._pageNumber} z {page_count}"
-        self.drawRightString(PAGE_WIDTH - MARGIN_RIGHT, 16, page_str)
-        self.drawString(MARGIN_LEFT, 16, "Diet-Med (TDP) — W razie wątpliwości skonsultuj się pod adresem poczta@diet-med.pl lub numerem telefonu +48 602 742 411.")
+        self.drawRightString(PAGE_WIDTH - MARGIN_RIGHT, 15, page_str)
+        self.drawString(MARGIN_LEFT, 15, "Diet-Med (TDP) — W razie wątpliwości: poczta@diet-med.pl | tel. +48 602 742 411")
 
         # Linia nad stopką
         self.setStrokeColor(colors.HexColor("#e2e8f0"))
